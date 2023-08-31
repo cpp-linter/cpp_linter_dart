@@ -1,0 +1,104 @@
+---
+MainSourceFile:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test/demo/demo.cpp'
+Diagnostics:
+  - DiagnosticName:  modernize-deprecated-headers
+    DiagnosticMessage:
+      Message:         'inclusion of deprecated C++ header ''stdio.h''; consider using ''cstdio'' instead'
+      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
+      FileOffset:      91
+      Replacements:
+        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
+          Offset:          91
+          Length:          9
+          ReplacementText: '<cstdio>'
+    Level:           Warning
+    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
+  - DiagnosticName:  modernize-use-trailing-return-type
+    DiagnosticMessage:
+      Message:         use a trailing return type for this function
+      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
+      FileOffset:      109
+      Replacements:
+        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
+          Offset:          105
+          Length:          3
+          ReplacementText: auto
+        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
+          Offset:          115
+          Length:          0
+          ReplacementText: ' -> int'
+    Level:           Warning
+    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
+  - DiagnosticName:  readability-braces-around-statements
+    DiagnosticMessage:
+      Message:         statement should be inside braces
+      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
+      FileOffset:      130
+      Replacements:
+        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
+          Offset:          130
+          Length:          0
+          ReplacementText: ' {'
+        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
+          Offset:          137
+          Length:          0
+          ReplacementText: "\n}"
+    Level:           Warning
+    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
+  - DiagnosticName:  cppcoreguidelines-pro-type-vararg
+    DiagnosticMessage:
+      Message:         do not call c-style vararg functions
+      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
+      FileOffset:      144
+      Replacements:    []
+    Level:           Warning
+    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
+  - DiagnosticName:  modernize-use-default-member-init
+    DiagnosticMessage:
+      Message:         'use default member initializer for ''useless'''
+      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
+      FileOffset:      40
+      Replacements:
+        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
+          Offset:          47
+          Length:          0
+          ReplacementText: '{"\0"}'
+        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
+          Offset:          85
+          Length:          13
+          ReplacementText: ''
+    Level:           Warning
+    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
+  - DiagnosticName:  modernize-use-default-member-init
+    DiagnosticMessage:
+      Message:         'use default member initializer for ''numb'''
+      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
+      FileOffset:      57
+      Replacements:
+        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
+          Offset:          61
+          Length:          0
+          ReplacementText: '{0}'
+        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
+          Offset:          76
+          Length:          7
+          ReplacementText: ''
+    Level:           Warning
+    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
+  - DiagnosticName:  modernize-use-trailing-return-type
+    DiagnosticMessage:
+      Message:         use a trailing return type for this function
+      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
+      FileOffset:      124
+      Replacements:
+        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
+          Offset:          118
+          Length:          6
+          ReplacementText: 'auto '
+        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
+          Offset:          145
+          Length:          0
+          ReplacementText: ' -> void *'
+    Level:           Warning
+    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
+...

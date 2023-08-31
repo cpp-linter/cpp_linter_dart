@@ -1,0 +1,22 @@
+name: cpp_linter_dart
+description: A sample command-line application.
+version: 1.0.0
+# repository: https://github.com/my_org/my_repo
+
+environment:
+  sdk: ^3.0.6
+
+# Add regular dependencies here.
+dependencies:
+  args: ^2.4.2
+  http: ^1.1.0
+  ini: ^2.1.0
+  logging: ^1.2.0
+  path: ^1.8.3
+  process_run: ^0.13.1
+  xml: ^6.3.0
+  yaml: ^3.1.2
+
+dev_dependencies:
+  lints: ^2.0.0
+  test: ^1.21.0
