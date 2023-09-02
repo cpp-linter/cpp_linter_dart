@@ -1,5 +1,10 @@
+// Dart imports:
 import 'dart:io';
+
+// Package imports:
 import 'package:xml/xml.dart';
+
+// Project imports:
 import 'package:cpp_linter_dart/logger.dart';
 import 'common.dart';
 

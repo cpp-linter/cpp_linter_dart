@@ -1,11 +1,16 @@
+// Dart imports:
 import 'dart:convert';
 import 'dart:io';
+
+// Package imports:
+import 'package:http/http.dart' as requests;
+
+// Project imports:
 import 'package:cpp_linter_dart/clang_format.dart';
 import 'package:cpp_linter_dart/clang_tidy.dart';
-import 'package:http/http.dart' as requests;
 import 'common.dart';
-import 'logger.dart';
 import 'git.dart';
+import 'logger.dart';
 
 /// Corresponds `GITHUB_API_URL` environment variable.
 const githubApiUrl = String.fromEnvironment(
@@ -138,7 +143,9 @@ Future<int?> removeBotComments(
 ) async {
   log.info('commentsUrl: $commentsUrl');
   int? commentId;
+  var page = 1;
   while (commentCount > 0) {
+    commentsUrl.queryParameters['page'] = '$page';
     var response = await requests.get(commentsUrl);
     if (response.statusCode != 200) {
       return null; // error getting comments for the thread; stop here
@@ -165,6 +172,7 @@ Future<int?> removeBotComments(
         }
         commentId = comment['id'] as int;
       }
+      page += 1;
       // log.config(
       //   'comment id ${comment['id']} from user ${commentUser['login']} '
       //   '(${commentUser['id']})',

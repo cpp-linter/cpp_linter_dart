@@ -1,7 +1,12 @@
+// Dart imports:
 import 'dart:convert';
 import 'dart:io';
-import 'package:logging/logging.dart' as logging;
+
+// Package imports:
 import 'package:http/http.dart' show Response;
+import 'package:logging/logging.dart' as logging;
+
+// Project imports:
 import 'package:cpp_linter_dart/common.dart';
 
 /// A logger used to prompt for user-related output.

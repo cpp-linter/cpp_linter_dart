@@ -1,7 +1,11 @@
+// Dart imports:
 import 'dart:io';
 
-import 'package:cpp_linter_dart/git.dart';
+// Package imports:
 import 'package:test/test.dart';
+
+// Project imports:
+import 'package:cpp_linter_dart/git.dart';
 
 void main() {
   test("getSha", () async {

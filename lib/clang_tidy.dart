@@ -1,9 +1,14 @@
+// Dart imports:
 import 'dart:convert';
 import 'dart:io';
+
+// Package imports:
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
-import 'logger.dart';
+
+// Project imports:
 import 'common.dart';
+import 'logger.dart';
 
 class TidyReplacement {
   int rmLength;

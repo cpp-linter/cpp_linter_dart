@@ -48,7 +48,7 @@ index 0000000..27d900a
 +          # could also upload the coverage/lcov.info (I think)
 +          files: ./coverage/coverage.json # the json format should suffice
 +          verbose: true # optional (default = false)
-+      
++
 +      - name: Make docs
 +        run: dart doc
 +
@@ -58,7 +58,7 @@ index 0000000..27d900a
 +          path: doc/api
 +          # built binaries are exclusive to the architecture used to compile.
 +          name: cpp_linter_dart docs
-+  
++
 +  build:
 +    strategy:
 +      matrix:
@@ -77,7 +77,7 @@ index 0000000..27d900a
 +        run: |
 +          mkdir dist/${{ runner.os }}
 +          dart compile exe -o dist/${{ runner.os }}/cpp-linter --target-os ${{ runner.os }} ./bin/cpp_linter_dart.dart
-+      
++
 +      - name: Upload built binary as CI artifact
 +        uses: actions/upload-artifact@v3
 +        with:

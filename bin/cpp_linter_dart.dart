@@ -1,10 +1,15 @@
+// Dart imports:
 import 'dart:io';
-import 'package:cpp_linter_dart/github_requests.dart';
+
+// Package imports:
 import 'package:path/path.dart' as p;
+
+// Project imports:
 import 'package:cpp_linter_dart/cli.dart' as cli;
+import 'package:cpp_linter_dart/common.dart';
+import 'package:cpp_linter_dart/github_requests.dart';
 import 'package:cpp_linter_dart/logger.dart';
 import 'package:cpp_linter_dart/run.dart';
-import 'package:cpp_linter_dart/common.dart';
 
 Future<int> main(List<String> arguments) async {
   var argParser = cli.getParser();

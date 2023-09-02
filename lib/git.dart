@@ -1,7 +1,12 @@
-import 'dart:io';
+// Dart imports:
 import 'dart:convert';
-import 'package:cpp_linter_dart/logger.dart';
+import 'dart:io';
+
+// Package imports:
 import 'package:path/path.dart' as p;
+
+// Project imports:
+import 'package:cpp_linter_dart/logger.dart';
 import 'common.dart';
 
 /// Get the SHA of the commit's [parent]. By default this get the last commit's
@@ -92,7 +97,6 @@ RegExp hunkInfo = RegExp(r'@@\s\-\d+,\d+\s\+(\d+,\d+)\s@@', multiLine: true);
 /// [FileObj.linesAdded] or [FileObj.diffChunks].
 void parsePatch(String patch, FileObj file) {
   List<int> additions = [];
-  List<List<int>> ranges = [];
   var lineNumberInDiff = 0; // should correspond to the file's line number
   for (final line in patch.split('\n')) {
     var hunkHeader = hunkInfo.firstMatch(line);
@@ -100,7 +104,6 @@ void parsePatch(String patch, FileObj file) {
       // starting new hunk
       var match = hunkHeader.group(1);
       var range = match!.split(',');
-      ranges.add([int.parse(range.first), int.parse(range.last)]);
       lineNumberInDiff = int.parse(range.first);
       continue;
     }
@@ -113,7 +116,6 @@ void parsePatch(String patch, FileObj file) {
   }
   file.linesAdded = consolidateListToRanges(additions);
   file.additions = additions;
-  file.diffChunks = ranges;
 }
 
 /// Parses a complete [diff] into a [List] of [FileObj]s (binary files are

@@ -1,9 +1,14 @@
+// Dart imports:
 import 'dart:convert';
 import 'dart:io';
+
+// Package imports:
+import 'package:path/path.dart' as p;
+import 'package:process_run/shell.dart';
+
+// Project imports:
 import 'package:cpp_linter_dart/clang_format.dart';
 import 'package:cpp_linter_dart/clang_tidy.dart';
-import 'package:process_run/shell.dart';
-import 'package:path/path.dart' as p;
 
 /// Describes if using a CI environment (as detected from the `CI` env var).
 const isOnRunner = bool.fromEnvironment('CI', defaultValue: false);
@@ -20,9 +25,6 @@ const clangFormatXmlCache = '.cpp_linter_cache/clang_format_output.xml';
 /// A generic representation of a file. This is used to store information
 /// commonly accessed by other functionality.
 class FileObj {
-  /// The ranges of line numbers in the diff. Not really used.
-  List<List<int>> diffChunks = [];
-
   /// The list of numbers that were added (as evident in a diff).
   List<int> additions = [];
 

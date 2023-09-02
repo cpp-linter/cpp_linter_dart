@@ -41,7 +41,7 @@ jobs:
         with:
           files: ./coverage/coverage.json,./coverage/lcov.info
           verbose: true # optional (default = false)
-      
+
       - name: Make docs
         run: dart doc
 
@@ -51,7 +51,7 @@ jobs:
           path: doc/api
           # built binaries are exclusive to the architecture used to compile.
           name: cpp_linter_dart docs
-  
+
   build:
     strategy:
       matrix:
@@ -70,7 +70,7 @@ jobs:
         run: |
           mkdir -p dist/${{ runner.os }}
           dart compile exe -o dist/${{ runner.os }}/cpp-linter ./bin/cpp_linter_dart.dart
-      
+
       - name: Upload built binary as CI artifact
         uses: actions/upload-artifact@v3
         with:

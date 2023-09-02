@@ -20,5 +20,6 @@ dependencies:
 
 dev_dependencies:
   coverage: ^1.6.3
+  import_sorter: ^4.6.0
   lints: ^2.0.0
   test: ^1.21.0

@@ -1,10 +1,15 @@
+// Dart imports:
 import 'dart:io';
-import 'package:path/path.dart' as p;
+
+// Package imports:
 import 'package:ini/ini.dart' show Config;
-import 'logger.dart';
-import 'common.dart' show FileObj;
+import 'package:path/path.dart' as p;
+
+// Project imports:
 import 'clang_format.dart';
 import 'clang_tidy.dart';
+import 'common.dart' show FileObj;
+import 'logger.dart';
 
 /// Parse the [userInput] (from CLI `--ignore` or `-i` argument) into a [List]
 /// of [Set]s that respectively correspond to ignored and not-ignored files.

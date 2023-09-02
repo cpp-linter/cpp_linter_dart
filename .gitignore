@@ -5,6 +5,12 @@
 # vscode settings
 .vscode/
 
+# python virtual env
+.env/
+.venv/
+env/
+venv/
+
 # app-specific cache
 .cpp_linter_cache/
 
