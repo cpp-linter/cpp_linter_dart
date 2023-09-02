@@ -39,7 +39,7 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         with:
-          files: ./coverage/coverage.json,coverage/lcov.info
+          files: ./coverage/coverage.json,./coverage/lcov.info
           verbose: true # optional (default = false)
       
       - name: Make docs
@@ -69,7 +69,7 @@ jobs:
       - name: Compile binary
         run: |
           mkdir -p dist/${{ runner.os }}
-          dart compile exe -o dist/${{ runner.os }}/cpp-linter --target-os ${{ runner.os }} ./bin/cpp_linter_dart.dart
+          dart compile exe -o dist/${{ runner.os }}/cpp-linter ./bin/cpp_linter_dart.dart
       
       - name: Upload built binary as CI artifact
         uses: actions/upload-artifact@v3
