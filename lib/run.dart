@@ -8,12 +8,12 @@ import 'clang_tidy.dart';
 
 /// Parse the [userInput] (from CLI `--ignore` or `-i` argument) into a [List]
 /// of [Set]s that respectively correspond to ignored and not-ignored files.
-List<Set<String>> parseIgnoredOption(String userInput) {
+(Set<String>, Set<String>) parseIgnoredOption(String userInput) {
   Set<String> ignored = {};
   Set<String> notIgnored = {};
   for (var path in userInput.split('|')) {
     bool isNotIgnored = path.startsWith("!");
-    path = path.replaceFirst(RegExp(r'[!]\.\/'), '');
+    path = path.replaceFirst(RegExp(r'[!]?(?:.\/)?'), '');
     if (isNotIgnored) {
       notIgnored.add(path);
     } else {
@@ -46,7 +46,7 @@ List<Set<String>> parseIgnoredOption(String userInput) {
       log.info('\t$path');
     }
   }
-  return [ignored, notIgnored];
+  return (ignored, notIgnored);
 }
 
 /// Is the specified [file] in the specified [fileSet]?
@@ -147,6 +147,7 @@ Future<(List<FormatFix>, List<TidyAdvice>, List<TidyNotification>)>
   String checks,
   String database,
   List<String>? extraArgs,
+  bool debug,
 ) async {
   var formatAdvice = <FormatFix>[];
   const tidyAdvice = <TidyAdvice>[];
@@ -161,13 +162,20 @@ Future<(List<FormatFix>, List<TidyAdvice>, List<TidyNotification>)>
       linesChangedOnly,
       database,
       extraArgs,
+      debug,
     );
     if (notes.isNotEmpty) tidyNotifications.addAll(notes);
     // For deployment, we are not actually using the yaml output
     // var advice = parseYmlAdvice(file);
     // if (advice.diagnostics.isNotEmpty) tidyAdvice.add(advice);
 
-    var fmtOut = await runClangFormat(file, version, style, linesChangedOnly);
+    var fmtOut = await runClangFormat(
+      file,
+      version,
+      style,
+      linesChangedOnly,
+      debug,
+    );
     if (fmtOut.replacements.isNotEmpty) {
       formatAdvice.add(fmtOut);
     }

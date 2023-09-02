@@ -1,3 +1,6 @@
+<!-- markdownlint-disable MD001 MD041 -->
+[![Dart](https://github.com/cpp-linter/cpp_linter_dart/actions/workflows/dart.yml/badge.svg)](https://github.com/cpp-linter/cpp_linter_dart/actions/workflows/dart.yml)
+
 # cpp_linter_dart
 
 This is an experimental port of the

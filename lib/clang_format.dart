@@ -172,6 +172,7 @@ Future<FormatFix> runClangFormat(
   String version,
   String style,
   bool linesChangedOnly,
+  bool debug,
 ) async {
   if (style.isEmpty) return FormatFix(file);
   var args = ['-style=$style', '--output-replacements-xml'];
@@ -191,7 +192,7 @@ Future<FormatFix> runClangFormat(
     captureStderr: stderrLines,
     allowThrows: false,
   );
-  File('.cpp_linter_cache/clang_format_output.xml').writeAsStringSync(xmlOut);
+  if (debug) File(clangFormatXmlCache).writeAsStringSync(xmlOut);
   if (stderrLines.isNotEmpty) {
     log.info('clang-format encountered the following errors:\n\t'
         '${stderrLines.join("\n\t")}');

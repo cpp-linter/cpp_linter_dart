@@ -13,7 +13,7 @@ Future<String> getSha({int parent = 1}) async {
 
 /// Get the diff for the currently staged files or the current commit if no
 /// changes were made.
-Future<String> getDiff() async {
+Future<String> getDiff(bool debug) async {
   var sha = await getSha();
   log.info('Getting diff between HEAD..$sha');
   var result = await subprocessRun('git', args: ['status', '-v']);
@@ -23,20 +23,22 @@ Future<String> getDiff() async {
     return '';
   }
   var diff = result.substring(diffStart);
-  var diffName = p.join(
-    p.current,
-    '.cpp_linter_cache',
-    'HEAD..${sha.substring(0, 6)}.diff',
-  );
-  File(diffName).writeAsStringSync(
-    diff,
-    mode: FileMode.writeOnly,
-    encoding: utf8,
-  );
+  if (debug) {
+    var diffName = p.join(
+      p.current,
+      '.cpp_linter_cache',
+      'HEAD..${sha.substring(0, 6)}.diff',
+    );
+    File(diffName).writeAsStringSync(
+      diff,
+      mode: FileMode.writeOnly,
+      encoding: utf8,
+    );
+  }
   return diff;
 }
 
-/// Parses a file's name from the diff chunk's fron matter. Binary files are
+/// Parses a file's name from the diff chunk's front matter. Binary files are
 /// ignored (returns `null`).
 String? getFileNameFromFrontMatter(String frontMatter) {
   var diffFileName = RegExp(r"^\+\+\+\sb?/(.*)$", multiLine: true);

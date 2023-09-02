@@ -24,17 +24,15 @@ Future<int> main(List<String> arguments) async {
   String extList = args['extensions'];
   var extensions = extList.split(',');
   extensions.removeWhere((element) => element.isEmpty);
-  for (var ext in extensions) {
-    if (!ext.startsWith('.')) {
-      extensions[extensions.indexOf(ext)] = '.$ext';
+  for (var ext in extensions.asMap().entries) {
+    if (!ext.value.startsWith('.')) {
+      extensions[ext.key] = '.${ext.value}';
     }
   }
 
   setupLoggers(args['verbosity']);
 
-  var ignoredSets = parseIgnoredOption(args['ignore']);
-  var ignored = ignoredSets.first;
-  var notIgnored = ignoredSets.last;
+  var (ignored, notIgnored) = parseIgnoredOption(args['ignore']);
 
   var repoRoot = args['repo-root'];
   if (repoRoot != '.') {
@@ -53,7 +51,7 @@ Future<int> main(List<String> arguments) async {
   startLogGroup('Get list of specified source files');
   var files = <FileObj>[];
   if (filesChangedOnly) {
-    files.addAll(await getListOfChangedFiles());
+    files.addAll(await getListOfChangedFiles(args['verbosity']));
     filterOutNonSourceFiles(
       files,
       extensions,
@@ -76,6 +74,7 @@ Future<int> main(List<String> arguments) async {
     args['tidy-checks'],
     args['database'],
     args.rest,
+    args['verbosity'],
   );
 
   startLogGroup('Posting comment(s)');

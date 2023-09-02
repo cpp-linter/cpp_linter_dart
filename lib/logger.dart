@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:logging/logging.dart' as logging;
 import 'package:http/http.dart' show Response;
-import 'common.dart';
+import 'package:cpp_linter_dart/common.dart';
 
 /// A logger used to prompt for user-related output.
 final log = logging.Logger('CPP-LINTER');
@@ -20,10 +20,12 @@ void setupLoggers(bool debugging) {
 
   log.level = debugging ? logging.Level.CONFIG : logging.Level.INFO;
   log.onRecord.listen((event) {
-    // translate CONFIG level as DEBUG level
     var level = switch (event.level) {
+      // translate CONFIG level as DEBUG messages
       logging.Level.CONFIG => 'DEBUG',
+      // translate SHOUT level as WARNING messages
       logging.Level.SHOUT => 'WARNING',
+      // all other levels use expected descriptions
       _ => event.level.toString(),
     };
     print('$level: ${event.loggerName}: ${event.message}');

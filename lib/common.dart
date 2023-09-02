@@ -9,7 +9,13 @@ import 'package:path/path.dart' as p;
 const isOnRunner = bool.fromEnvironment('CI', defaultValue: false);
 
 /// The name of the cached YAML output file used to parse clang-tidy advice.
-const clangTidyCache = '.cpp_linter_cache/clang_tidy_output.yml';
+const clangTidyYamlCache = '.cpp_linter_cache/clang_tidy_output.yml';
+
+/// The name of the cached file containing stdout used to parse clang-tidy notes.
+const clangTidyNoteCache = '.cpp_linter_cache/clang-tidy-output.txt';
+
+/// The name of the cached XML output used to parse clang-format advice.
+const clangFormatXmlCache = '.cpp_linter_cache/clang_format_output.xml';
 
 /// A generic representation of a file. This is used to store information
 /// commonly accessed by other functionality.

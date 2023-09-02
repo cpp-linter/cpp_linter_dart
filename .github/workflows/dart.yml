@@ -12,17 +12,15 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
 
-      # Note: This workflow uses the latest stable version of the Dart SDK.
-      # You can specify other versions if desired, see documentation here:
       # https://github.com/dart-lang/setup-dart/blob/main/README.md
-      # - uses: dart-lang/setup-dart@v1
-      - uses: dart-lang/setup-dart@9a04e6d73cca37bd455e0608d7e5092f881fd603
+      - name: Install Dart SDK
+        uses: dart-lang/setup-dart@v1
 
       - name: Install dependencies
         run: dart pub get
@@ -30,12 +28,53 @@ jobs:
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed .
 
-      # Consider passing '--fatal-infos' for slightly stricter analysis.
       - name: Analyze project source
         run: dart analyze --fatal-infos
 
-      # Your project will need to have tests in test/ and a dependency on
-      # package:test for this step to succeed. Note that Flutter projects will
-      # want to change this to 'flutter test'.
-      - name: Run tests
-        run: dart test
+      - name: Run tests (& collect coverage)
+        run: dart run coverage:test_with_coverage
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v3
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        with:
+          # could also upload the coverage/lcov.info (I think)
+          files: ./coverage/coverage.json # the json format should suffice
+          verbose: true # optional (default = false)
+      
+      - name: Make docs
+        run: dart doc
+
+      - name: Upload docs as CI artifact
+        uses: actions/upload-artifact@v3
+        with:
+          path: doc/api
+          # built binaries are exclusive to the architecture used to compile.
+          name: cpp_linter_dart docs
+  
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Dart SDK
+        uses: dart-lang/setup-dart@v1
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Compile binary
+        run: |
+          mkdir dist/${{ runner.os }}
+          dart compile exe -o dist/${{ runner.os }}/cpp-linter --target-os ${{ runner.os }} ./bin/cpp_linter_dart.dart
+      
+      - name: Upload built binary as CI artifact
+        uses: actions/upload-artifact@v3
+        with:
+          path: dist/${{ runner.os }}/cpp-linter
+          # built binaries are exclusive to the architecture used to compile.
+          name: cpp-linter_${{ runner.os }}_${{ runner.arch }}

@@ -122,7 +122,7 @@ class TidyAdvice {
 }
 
 TidyAdvice parseYmlAdvice(FileObj file, {bool lineChangesOnly = false}) {
-  var yml = loadYaml(File(clangTidyCache).readAsStringSync()) as Map;
+  var yml = loadYaml(File(clangTidyYamlCache).readAsStringSync()) as Map;
   var yamlAdvice = TidyAdvice(file);
   List<int>? changed = file.additions;
   for (final diagnostic in yml['Diagnostics']) {
@@ -236,12 +236,13 @@ Future<List<TidyNotification>> runClangTidy(
   bool linesChangedOnly,
   String database,
   List<String>? extraArgs,
+  bool debug,
 ) async {
-  File(clangTidyCache).writeAsBytesSync([]);
+  File(clangTidyYamlCache).writeAsBytesSync([]);
   if (checks == '-*') return <TidyNotification>[];
   var exe = makeClangToolExeVersion('clang-tidy', version);
   var args = [
-    "--export-fixes=${clangTidyCache.replaceAll('/', p.separator)}",
+    "--export-fixes=${clangTidyYamlCache.replaceAll('/', p.separator)}",
     '--format-style=${style.isEmpty ? 'none' : style}',
   ];
   if (checks.isNotEmpty) args.add("--checks='$checks'");
@@ -267,7 +268,7 @@ Future<List<TidyNotification>> runClangTidy(
   var stderrLines = <String>[];
   var result = await subprocessRun(exe,
       args: args, captureStderr: stderrLines, allowThrows: false);
-  File('.cpp_linter_cache/clang-tidy-output.txt').writeAsStringSync(result);
+  if (debug) File(clangTidyNoteCache).writeAsStringSync(result);
   if (stderrLines.isNotEmpty) {
     log.config(
       'clang-tidy made the following summary:\n\t${stderrLines.join("\n\t")}',
