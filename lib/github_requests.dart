@@ -67,7 +67,7 @@ Map<String, String> makeHeaders({bool useDiff = false}) {
 
 /// Use the Github REST API to get a list of changed files according to the
 /// [githubEventName].
-Future<List<FileObj>> getListOfChangedFiles() async {
+Future<List<FileObj>> getListOfChangedFiles(bool debug) async {
   if (isOnRunner) {
     var urlPath = 'repos/$githubRepository';
     if (githubEventName == 'pull_request') {
@@ -91,7 +91,7 @@ Future<List<FileObj>> getListOfChangedFiles() async {
     logRequestResponse(response);
     return parseDiff(response.body);
   }
-  return parseDiff(await getDiff());
+  return parseDiff(await getDiff(debug));
 }
 
 int makeAnnotations(

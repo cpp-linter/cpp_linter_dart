@@ -80,6 +80,12 @@ ArgParser getParser() {
     abbr: 'c',
     defaultsTo: 'false',
     allowed: ['true', 'false', 'update'],
+    allowedHelp: {
+      'true': 'deletes an old thread comment (if any) and creates a new one',
+      'false': 'does not delate or create a thread comment',
+      'update': 'updates the content of a thread comment or creates one if none'
+          ' exist',
+    },
     help: 'Enable feedback in the form of a thread comment ',
   );
   parser.addFlag(

@@ -1,0 +1,2757 @@
+diff --git a/.github/workflows/dart.yml b/.github/workflows/dart.yml
+new file mode 100644
+index 0000000..27d900a
+--- /dev/null
++++ b/.github/workflows/dart.yml
+@@ -0,0 +1,80 @@
++# This workflow uses actions that are not certified by GitHub.
++# They are provided by a third-party and are governed by
++# separate terms of service, privacy policy, and support
++# documentation.
++
++name: Dart
++
++on:
++  push:
++    branches: [ "main" ]
++  pull_request:
++    branches: [ "main" ]
++
++jobs:
++  test:
++    runs-on: ubuntu-latest
++
++    steps:
++      - uses: actions/checkout@v3
++
++      # https://github.com/dart-lang/setup-dart/blob/main/README.md
++      - name: Install Dart SDK
++        uses: dart-lang/setup-dart@v1
++
++      - name: Install dependencies
++        run: dart pub get
++
++      - name: Verify formatting
++        run: dart format --output=none --set-exit-if-changed .
++
++      - name: Analyze project source
++        run: dart analyze --fatal-infos
++
++      - name: Run tests (& collect coverage)
++        run: dart run coverage:test_with_coverage
++
++      - name: Upload coverage report
++        uses: codecov/codecov-action@v3
++        env:
++          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
++        with:
++          # could also upload the coverage/lcov.info (I think)
++          files: ./coverage/coverage.json # the json format should suffice
++          verbose: true # optional (default = false)
++      
++      - name: Make docs
++        run: dart doc
++
++      - name: Upload docs as CI artifact
++        uses: actions/upload-artifact@v3
++        with:
++          path: doc/api
++          # built binaries are exclusive to the architecture used to compile.
++          name: cpp_linter_dart docs
++  
++  build:
++    strategy:
++      matrix:
++        os: [ubuntu-latest, windows-latest, macos-latest]
++    runs-on: ${{ matrix.os }}
++    steps:
++      - uses: actions/checkout@v3
++
++      - name: Install Dart SDK
++        uses: dart-lang/setup-dart@v1
++
++      - name: Install dependencies
++        run: dart pub get
++
++      - name: Compile binary
++        run: |
++          mkdir dist/${{ runner.os }}
++          dart compile exe -o dist/${{ runner.os }}/cpp-linter --target-os ${{ runner.os }} ./bin/cpp_linter_dart.dart
++      
++      - name: Upload built binary as CI artifact
++        uses: actions/upload-artifact@v3
++        with:
++          path: dist/${{ runner.os }}/cpp-linter
++          # built binaries are exclusive to the architecture used to compile.
++          name: cpp-linter_${{ runner.os }}_${{ runner.arch }}
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..8fe6f35
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,13 @@
++# https://dart.dev/guides/libraries/private-files
++# Created by `dart pub`
++.dart_tool/
++
++# vscode settings
++.vscode/
++
++# app-specific cache
++.cpp_linter_cache/
++
++# exclude generated docs
++doc/api/
++coverage/
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+new file mode 100644
+index 0000000..effe43c
+--- /dev/null
++++ b/CHANGELOG.md
+@@ -0,0 +1,3 @@
++## 1.0.0
++
++- Initial version.
+diff --git a/README.md b/README.md
+index 3816eca..5ceab5d 100644
+--- a/README.md
++++ b/README.md
+@@ -1,2 +1,17 @@
+-A sample command-line application with an entrypoint in `bin/`, library code
+-in `lib/`, and example unit test in `test/`.
++<!-- markdownlint-disable MD001 MD041 -->
++[![Dart](https://github.com/cpp-linter/cpp_linter_dart/actions/workflows/dart.yml/badge.svg)](https://github.com/cpp-linter/cpp_linter_dart/actions/workflows/dart.yml)
++
++# cpp_linter_dart
++
++This is an experimental port of the
++[cpp-linter python package](https://github.com/cpp-linter/cpp-linter). Like the
++python package, this dart package is not meant to be used as a importable library.
++Although, some library parts may be useful to other applications. For example,
++`lib/git.dart` can be used to parse a diff into a `List<FileObj>` that describes a file's changed lines.
++
++This dart port is meant to optimize away any runtime compilation. By using dart, we
++can ship a binary executable (native to Linux, Windows, or MacOS) instead of
++downloading executable scripts from pypi.
++
++The application entrypoint's source is in `bin/`, and the application's library code
++is in `lib/`. Unit tests are in `test/` which are used to calculate code coverage and detect bugs early.
+diff --git a/analysis_options.yaml b/analysis_options.yaml
+new file mode 100644
+index 0000000..dee8927
+--- /dev/null
++++ b/analysis_options.yaml
+@@ -0,0 +1,30 @@
++# This file configures the static analysis results for your project (errors,
++# warnings, and lints).
++#
++# This enables the 'recommended' set of lints from `package:lints`.
++# This set helps identify many issues that may lead to problems when running
++# or consuming Dart code, and enforces writing Dart using a single, idiomatic
++# style and format.
++#
++# If you want a smaller set of lints you can change this to specify
++# 'package:lints/core.yaml'. These are just the most critical lints
++# (the recommended set includes the core lints).
++# The core lints are also what is used by pub.dev for scoring packages.
++
++include: package:lints/recommended.yaml
++
++# Uncomment the following section to specify additional rules.
++
++# linter:
++#   rules:
++#     - camel_case_types
++
++# analyzer:
++#   exclude:
++#     - path/to/excluded/files/**
++
++# For more information about the core and recommended set of lints, see
++# https://dart.dev/go/core-lints
++
++# For additional information about configuring this file, see
++# https://dart.dev/guides/language/analysis-options
+diff --git a/bin/cpp_linter_dart.dart b/bin/cpp_linter_dart.dart
+new file mode 100644
+index 0000000..946b23a
+--- /dev/null
++++ b/bin/cpp_linter_dart.dart
+@@ -0,0 +1,123 @@
++import 'dart:io';
++import 'package:cpp_linter_dart/github_requests.dart';
++import 'package:path/path.dart' as p;
++import 'package:cpp_linter_dart/cli.dart' as cli;
++import 'package:cpp_linter_dart/logger.dart';
++import 'package:cpp_linter_dart/run.dart';
++import 'package:cpp_linter_dart/common.dart';
++
++Future<int> main(List<String> arguments) async {
++  var argParser = cli.getParser();
++  var args = argParser.parse(arguments);
++  if (args['help']) {
++    cli.showHelp(argParser);
++    return 0;
++  }
++
++  // force files-changed-only to reflect value of lines-changed-only
++  bool linesChangedOnly = args['lines-changed-only'];
++  bool filesChangedOnly = args['files-changed-only'];
++  if (linesChangedOnly) {
++    filesChangedOnly = true;
++  }
++
++  String extList = args['extensions'];
++  var extensions = extList.split(',');
++  extensions.removeWhere((element) => element.isEmpty);
++  for (var ext in extensions) {
++    if (!ext.startsWith('.')) {
++      extensions[extensions.indexOf(ext)] = '.$ext';
++    }
++  }
++
++  setupLoggers(args['verbosity']);
++
++  var ignoredSets = parseIgnoredOption(args['ignore']);
++  var ignored = ignoredSets.first;
++  var notIgnored = ignoredSets.last;
++
++  var repoRoot = args['repo-root'];
++  if (repoRoot != '.') {
++    if (p.isAbsolute(repoRoot)) {
++      Directory.current = repoRoot;
++    } else {
++      var current = Directory.current;
++      Directory.current = p.normalize(p.join(current.toString(), repoRoot));
++    }
++  }
++  // create a temp cache dir
++  Directory('.cpp_linter_cache').create();
++
++  log.info('Processing $githubEventName event');
++
++  startLogGroup('Get list of specified source files');
++  var files = <FileObj>[];
++  if (filesChangedOnly) {
++    files.addAll(await getListOfChangedFiles(args['verbosity']));
++    filterOutNonSourceFiles(
++      files,
++      extensions,
++      ignored,
++      notIgnored,
++      linesChangedOnly,
++    );
++  } else {
++    files = listSourceFiles(extensions, ignored, notIgnored);
++  }
++  endLogGroup();
++  if (files.isEmpty) {
++    return setExitCode(0);
++  }
++  var (formatAdvice, _, tidyNotes) = await captureClangToolsOutput(
++    files,
++    args['version'],
++    linesChangedOnly,
++    args['style'],
++    args['tidy-checks'],
++    args['database'],
++    args.rest,
++    args['verbosity'],
++  );
++
++  startLogGroup('Posting comment(s)');
++  var threadCommentsAllowed = true;
++  if (githubEventPath.isNotEmpty) {
++    var repoInfo = ghEventPayload['repository'] as Map<String, Object>?;
++    if (repoInfo != null && repoInfo.keys.contains('private')) {
++      threadCommentsAllowed = repoInfo['private'] as bool == false;
++    }
++  }
++  final commentBody = makeComment(formatAdvice, tidyNotes, linesChangedOnly);
++  final commentPreamble = '<!-- cpp linter action -->\n# Cpp-Linter Report ';
++  final commentPs = '\n\nHave any feedback or feature suggestions? [Share it '
++      'here.](https://github.com/cpp-linter/cpp-linter-action/issues)';
++  final lgtm = '$commentPreamble:heavy_check_mark:\nNo problems need attention.'
++      '$commentPs';
++  final fullComment = '$commentPreamble$commentBody$commentPs';
++  if (args['thread-comments'] != 'false' && threadCommentsAllowed) {
++    bool updateOnly = args['thread-comments'] == 'update';
++    if (args['lgtm'] && commentBody.isEmpty) {
++      postResults(lgtm, updateOnly);
++    } else {
++      postResults(commentBody.isNotEmpty ? fullComment : '', updateOnly);
++    }
++  }
++  if (args['step-summary'] && githubStepSummary.isNotEmpty) {
++    File(githubStepSummary).writeAsString(
++      '\n${commentBody.isNotEmpty ? fullComment : lgtm}\n',
++      mode: FileMode.append,
++    );
++  }
++  setExitCode(
++    makeAnnotations(
++      formatAdvice,
++      tidyNotes,
++      args['file-annotations'],
++      args['style'],
++      linesChangedOnly,
++    ),
++  );
++  endLogGroup();
++
++  return setExitCode(0);
++}
+diff --git a/clang_tidy_output.yml b/clang_tidy_output.yml
+new file mode 100644
+index 0000000..eebc84a
+--- /dev/null
++++ b/clang_tidy_output.yml
+@@ -0,0 +1,104 @@
++---
++MainSourceFile:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test/demo/demo.cpp'
++Diagnostics:
++  - DiagnosticName:  modernize-deprecated-headers
++    DiagnosticMessage:
++      Message:         'inclusion of deprecated C++ header ''stdio.h''; consider using ''cstdio'' instead'
++      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
++      FileOffset:      91
++      Replacements:
++        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
++          Offset:          91
++          Length:          9
++          ReplacementText: '<cstdio>'
++    Level:           Warning
++    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
++  - DiagnosticName:  modernize-use-trailing-return-type
++    DiagnosticMessage:
++      Message:         use a trailing return type for this function
++      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
++      FileOffset:      109
++      Replacements:
++        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
++          Offset:          105
++          Length:          3
++          ReplacementText: auto
++        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
++          Offset:          115
++          Length:          0
++          ReplacementText: ' -> int'
++    Level:           Warning
++    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
++  - DiagnosticName:  readability-braces-around-statements
++    DiagnosticMessage:
++      Message:         statement should be inside braces
++      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
++      FileOffset:      130
++      Replacements:
++        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
++          Offset:          130
++          Length:          0
++          ReplacementText: ' {'
++        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
++          Offset:          137
++          Length:          0
++          ReplacementText: "\n}"
++    Level:           Warning
++    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
++  - DiagnosticName:  cppcoreguidelines-pro-type-vararg
++    DiagnosticMessage:
++      Message:         do not call c-style vararg functions
++      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.cpp'
++      FileOffset:      144
++      Replacements:    []
++    Level:           Warning
++    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
++  - DiagnosticName:  modernize-use-default-member-init
++    DiagnosticMessage:
++      Message:         'use default member initializer for ''useless'''
++      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
++      FileOffset:      40
++      Replacements:
++        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
++          Offset:          47
++          Length:          0
++          ReplacementText: '{"\0"}'
++        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
++          Offset:          85
++          Length:          13
++          ReplacementText: ''
++    Level:           Warning
++    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
++  - DiagnosticName:  modernize-use-default-member-init
++    DiagnosticMessage:
++      Message:         'use default member initializer for ''numb'''
++      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
++      FileOffset:      57
++      Replacements:
++        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
++          Offset:          61
++          Length:          0
++          ReplacementText: '{0}'
++        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
++          Offset:          76
++          Length:          7
++          ReplacementText: ''
++    Level:           Warning
++    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
++  - DiagnosticName:  modernize-use-trailing-return-type
++    DiagnosticMessage:
++      Message:         use a trailing return type for this function
++      FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
++      FileOffset:      124
++      Replacements:
++        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
++          Offset:          118
++          Length:          6
++          ReplacementText: 'auto '
++        - FilePath:        'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo\demo.hpp'
++          Offset:          145
++          Length:          0
++          ReplacementText: ' -> void *'
++    Level:           Warning
++    BuildDirectory:  'C:\Users\ytreh\Documents\GitHub\cpp_linter_dart\test\demo'
++...
+diff --git a/lib/clang_format.dart b/lib/clang_format.dart
+new file mode 100644
+index 0000000..5e9a973
+--- /dev/null
++++ b/lib/clang_format.dart
+@@ -0,0 +1,201 @@
++import 'dart:io';
++import 'package:xml/xml.dart';
++import 'package:cpp_linter_dart/logger.dart';
++import 'common.dart';
++
++/// A single piece of clang-format advice about a single line.
++class FormatReplacement {
++  /// The number of columns where the advice begins.
++  int offset;
++
++  /// The total number of columns being removed as part of the advice.
++  int rmLength;
++
++  /// The line number where the replacement starts.
++  int line;
++
++  /// The column number of the line where the replacement starts.
++  int cols;
++
++  /// The modified text resulting from the advice.
++  String text;
++
++  /// Create an object to represent singular clang-format advice.
++  FormatReplacement(
++    this.offset,
++    this.rmLength,
++    this.line,
++    this.cols,
++    this.text,
++  );
++}
++
++/// Advice parsed from clang-format for a [file].
++class FormatFix {
++  /// The [FileObj] that corresponds to the advice in [replacements].
++  FileObj file;
++
++  /// Create an object used to represent advice from clang-format.
++  FormatFix(this.file);
++
++  /// A [List] of advice about a single line.
++  List<List<FormatReplacement>> replacements = [];
++
++  /// Use [logCommander] to output clang-format advice for a single file.
++  String logCommand(String style, bool linesChangedOnly) {
++    List<String> knownStyles = [
++      'llvm',
++      'gnu',
++      'google',
++      'chromium',
++      'microsoft',
++      'mozilla',
++      'webkit',
++    ];
++    final String displayStyle;
++    if (!knownStyles.contains(style)) {
++      displayStyle = 'Custom';
++    } else {
++      if (['gnu', 'llvm'].contains(style)) {
++        displayStyle = style.toUpperCase();
++      } else {
++        displayStyle = '${style[0].toUpperCase()}${style.substring(1)}';
++      }
++    }
++
++    List<int> lines = [];
++    if (!linesChangedOnly) {
++      for (final replacement in replacements) {
++        lines.add(replacement.first.line);
++      }
++    } else {
++      lines = replacements
++          .where((lineFixes) => file.additions.contains(lineFixes.first.line))
++          .map((e) => e.first.line)
++          .toList();
++    }
++
++    if (lines.isEmpty) return '';
++    return '::notice file=${file.name},title=Run clang-format on ${file.name}::'
++        'File ${file.name} does not conform to $displayStyle style guidelines. '
++        '(lines ${lines.join(", ")})';
++  }
++
++  /// NOTE: This is currently broken and needs much improvement!
++  List<String> getSuggestions({bool lineChangesOnly = false}) {
++    List<int>? linesChanged;
++    if (lineChangesOnly) {
++      linesChanged = file.additions;
++    }
++    var content = File(file.name).readAsStringSync();
++    var result = <String>[];
++    for (final lineFixes in replacements) {
++      if (lineChangesOnly &&
++          linesChanged != null &&
++          !linesChanged.contains(lineFixes.first.line)) {
++        continue;
++      }
++      var lastOffset = 0;
++      var replaced = '';
++      for (final fix in lineFixes.asMap().entries) {
++        if (replaced.isEmpty) {
++          // starting our first replacement for a line
++          replaced = content.replaceRange(
++            fix.value.offset,
++            fix.value.offset + fix.value.rmLength,
++            fix.value.text,
++          );
++          lastOffset =
++              fix.value.offset + fix.value.rmLength + fix.value.text.length;
++        } else {
++          // starting a subsequent replacement for the same line
++          var adjustedOffset = 0;
++          for (final prev in lineFixes.take(fix.key)) {
++            adjustedOffset += prev.text.length - prev.rmLength;
++          }
++          replaced = replaced.replaceRange(
++              fix.value.offset + adjustedOffset,
++              fix.value.offset + adjustedOffset + fix.value.rmLength,
++              fix.value.text);
++          lastOffset = adjustedOffset +
++              fix.value.offset -
++              fix.value.rmLength +
++              fix.value.text.length;
++        }
++      }
++      var lineStart = content.lastIndexOf('\n', lineFixes.first.offset - 1) + 1;
++      var lineEnd = replaced.indexOf('\n', lastOffset + 1);
++      assert(lineEnd >= lineStart);
++      result.add(
++        '```suggestion\n${replaced.substring(lineStart, lineEnd)}\n```',
++      );
++    }
++    return result;
++  }
++}
++
++/// Parse the [xmlOut] from running clang-format on a single [file].
++FormatFix parseFormatReplacementsXml(String xmlOut, FileObj file) {
++  FormatFix advice = FormatFix(file);
++  final document = XmlDocument.parse(xmlOut);
++  for (final child in document.root.findAllElements('replacement')) {
++    var offset = int.parse(
++      child.attributes.firstWhere((p0) => p0.name.toString() == 'offset').value,
++    );
++    var (line, cols) = getLineAndColsFromOffset(file.name, offset);
++    var rmLength =
++        child.attributes.firstWhere((p0) => p0.name.toString() == 'length');
++    var replacement = FormatReplacement(
++      offset,
++      int.parse(rmLength.value),
++      line,
++      cols,
++      child.innerText,
++    );
++    if (advice.replacements.isEmpty ||
++        advice.replacements.last.last.line != line) {
++      // replacement happens on a different line
++      advice.replacements.add([replacement]);
++    } else {
++      // replacement happens on the same line as the last replacement
++      advice.replacements.last.add(replacement);
++    }
++  }
++  return advice;
++}
++
++/// Run clang-format (of specified [version]) on a [file] for compliance with a
++/// specified [style]. If [linesChangedOnly] is `true`, then only lines with
++/// additions is of focus.
++Future<FormatFix> runClangFormat(
++  FileObj file,
++  String version,
++  String style,
++  bool linesChangedOnly,
++  bool debug,
++) async {
++  if (style.isEmpty) return FormatFix(file);
++  var args = ['-style=$style', '--output-replacements-xml'];
++  var ranges = file.linesAdded;
++  if (linesChangedOnly) {
++    for (final range in ranges) {
++      args.add('--lines=${range.first}:${range.last}');
++    }
++  }
++  args.add(file.name);
++  var stderrLines = <String>[];
++  var exe = makeClangToolExeVersion('clang-format', version);
++  log.info('Running "$exe ${args.join(' ')}"');
++  var xmlOut = await subprocessRun(
++    exe,
++    args: args,
++    captureStderr: stderrLines,
++    allowThrows: false,
++  );
++  if (debug) File(clangFormatXmlCache).writeAsStringSync(xmlOut);
++  if (stderrLines.isNotEmpty) {
++    log.info('clang-format encountered the following errors:\n\t'
++        '${stderrLines.join("\n\t")}');
++  }
++  return parseFormatReplacementsXml(xmlOut, file);
++}
+diff --git a/lib/clang_tidy.dart b/lib/clang_tidy.dart
+new file mode 100644
+index 0000000..053d41f
+--- /dev/null
++++ b/lib/clang_tidy.dart
+@@ -0,0 +1,278 @@
++import 'dart:convert';
++import 'dart:io';
++import 'package:path/path.dart' as p;
++import 'package:yaml/yaml.dart';
++import 'logger.dart';
++import 'common.dart';
++
++class TidyReplacement {
++  int rmLength;
++  int line;
++  int cols;
++  int offset;
++  String text = "";
++
++  TidyReplacement(this.offset, this.line, this.cols, this.rmLength);
++}
++
++/// A class to represent a single reported clang-tidy diagnostic for a file.
++class TidyDiagnostic {
++  /// The identifying [name] of the clang-tidy diagnostic.
++  String name;
++  int offset;
++  String message;
++  String level;
++
++  /// Create an object to represent a clang-tidy diagnostic.
++  TidyDiagnostic(this.name, this.offset, this.message, this.level);
++
++  int line = 1;
++  int cols = 0;
++  List<TidyReplacement> replacements = [];
++
++  /// Get a suggestion (in markdown format) for the diagnostic in accordance to
++  /// the clang-tidy list of replacements. Returns `null` if no replacements
++  /// were generated by clang-tidy (some diagnostics don't have auto fixes).
++  String? suggestion(String content, List<int>? linesChanged) {
++    if (replacements.isEmpty) return null;
++    var replaced = '';
++    var lastOffset = 0;
++    for (final replacement in replacements.asMap().entries) {
++      if (linesChanged != null &&
++          !linesChanged.contains(replacement.value.line)) {
++        continue;
++      }
++
++      if (replaced.isEmpty) {
++        // making our first replacement
++        replaced = content.replaceRange(
++          replacement.value.offset,
++          replacement.value.offset + replacement.value.rmLength,
++          replacement.value.text,
++        );
++        lastOffset = replacement.value.offset + replacement.value.text.length;
++      } else {
++        // making a subsequent replacement.
++        var adjustedOffset = 0;
++        // We need to know how much the content has changed from previous
++        // replacements (about this diagnostic).
++        for (final prev in replacements.take(replacement.key)) {
++          adjustedOffset += prev.text.length - prev.rmLength;
++        }
++        replaced = replaced.replaceRange(
++          adjustedOffset + replacement.value.offset,
++          adjustedOffset +
++              replacement.value.offset +
++              replacement.value.rmLength,
++          replacement.value.text,
++        );
++        lastOffset = adjustedOffset +
++            replacement.value.offset +
++            replacement.value.text.length -
++            replacement.value.rmLength;
++      }
++    }
++    var lineStart = replaced.lastIndexOf('\n', offset) + 1;
++    var lineEnd = replaced.indexOf('\n', lastOffset);
++    assert(lineEnd >= lineStart);
++    return '```suggestion\n${replaced.substring(lineStart, lineEnd)}\n```';
++  }
++}
++
++/// A class to represent clang-tidy advice about a single file.
++class TidyAdvice {
++  /// The [FileObj] corresponding to the clang-tidy advice
++  final FileObj file;
++
++  /// Create an object to represent clang-tidy advice about a [file].
++  TidyAdvice(this.file);
++
++  /// The [List] of clang-tidy diagnostics about the file.
++  List<TidyDiagnostic> diagnostics = [];
++
++  void logCommand({bool lineChangesOnly = false}) {
++    var linesChanged = file.additions;
++    for (final diag in diagnostics) {
++      // This check for line changes may seem redundant since it was already
++      // done when parsing the YAML fixes, but some advice may have originated
++      // from lines not changed.
++      if (lineChangesOnly && !linesChanged.contains(diag.line)) {
++        continue;
++      }
++      logCommander.info(
++        '::${diag.level.startsWith('note') ? 'notice' : diag.level.toLowerCase()}'
++        ' file=${file.name},line=${diag.line},title=${diag.message}:'
++        '${diag.line}:${diag.cols} [${diag.name}]::${diag.message}',
++      );
++    }
++  }
++
++  List<String> getSuggestions({bool lineChangesOnly = false}) {
++    var linesChanged = lineChangesOnly ? file.additions : null;
++    var content = File(file.name).readAsStringSync();
++    var results = <String>[];
++    for (final diag in diagnostics) {
++      var advice = diag.suggestion(content, linesChanged);
++      if (advice != null) {
++        results.add(advice);
++      }
++    }
++    return results;
++  }
++}
++
++TidyAdvice parseYmlAdvice(FileObj file, {bool lineChangesOnly = false}) {
++  var yml = loadYaml(File(clangTidyYamlCache).readAsStringSync()) as Map;
++  var yamlAdvice = TidyAdvice(file);
++  List<int>? changed = file.additions;
++  for (final diagnostic in yml['Diagnostics']) {
++    String type = diagnostic['DiagnosticName'];
++    String level = diagnostic['Level'];
++    var message = diagnostic['DiagnosticMessage'] as Map;
++    String text = message['Message'];
++    YamlList replacements = message['Replacements'];
++    int offset = message['FileOffset'];
++    String path = message['FilePath'];
++    var tidyDiag = TidyDiagnostic(type, offset, text, level);
++    var (line, cols) = getLineAndColsFromOffset(path, offset);
++    tidyDiag.line = line;
++    tidyDiag.cols = cols;
++    yamlAdvice.diagnostics.add(tidyDiag);
++    for (final replacement in replacements) {
++      String rPath = replacement['FilePath'];
++      int offset = replacement['Offset'];
++      (line, cols) = getLineAndColsFromOffset(rPath, offset);
++      if (lineChangesOnly && !changed.contains(line)) {
++        continue;
++      }
++      var rmLength = replacement['Length'];
++      var tidyReplace = TidyReplacement(offset, line, cols, rmLength);
++      tidyReplace.text = replacement['ReplacementText'];
++      tidyDiag.replacements.add(tidyReplace);
++    }
++  }
++  return yamlAdvice;
++}
++
++/// A class to represent clang-tidy notifications (parsed from the stdout of a
++/// dry run).
++class TidyNotification {
++  /// The file's name corresponding to the notification.
++  final FileObj file;
++
++  /// The line number about the notification.
++  final int line;
++
++  /// The column number on the line about the notification.
++  final int cols;
++
++  /// The priority level of the notification.
++  final String type;
++
++  /// The human-friendly text describing the diagnostic about the notification.
++  final String info;
++
++  /// The clang-tidy diagnostic name that triggered the notification (as given
++  /// to clang-tidy's `-checks` arg).
++  final String diagnostic;
++
++  /// A list of source lines about the notification. Some diagnostic prompts do
++  /// not include this, so this list may be empty.
++  List<String> srcLines = [];
++
++  /// Create an object to represent a clang-tidy notification.
++  TidyNotification(
++    this.file,
++    this.line,
++    this.cols,
++    this.type,
++    this.info,
++    this.diagnostic,
++  );
++
++  String logCommand(bool linesChangedOnly) {
++    if (linesChangedOnly && !file.additions.contains(line)) return '';
++    return '::${type.startsWith('note') ? "notice" : type} file=${file.name},'
++        'line=$line,title=${file.name}:$line:$cols [$diagnostic]::$info';
++  }
++}
++
++List<TidyNotification> parseTidyOutput(FileObj file, String output) {
++  var notifications = <TidyNotification>[];
++  for (final line in output.split('\n')) {
++    var match = RegExp(r"^(.+):(\d+):(\d+):\s(\w+):(.*)\[([a-zA-Z\d\-\.]+)\]$")
++        .matchAsPrefix(line);
++    if (match != null) {
++      // starting a new notification
++      // var filename = p.relative(match[1]!).replaceAll('\\', '/');
++      var line = int.parse(match[2]!);
++      var cols = int.parse(match[3]!);
++      var noteType = match[4]!;
++      var noteInfo = match[5]!;
++      var diagnostic = match[6]!;
++      notifications.add(
++        TidyNotification(
++          file,
++          line,
++          cols,
++          noteType,
++          noteInfo,
++          diagnostic,
++        ),
++      );
++    } else {
++      assert(notifications.isNotEmpty);
++      notifications.last.srcLines.add(line);
++    }
++  }
++  return notifications;
++}
++
++Future<List<TidyNotification>> runClangTidy(
++  FileObj file,
++  String version,
++  String style,
++  String checks,
++  bool linesChangedOnly,
++  String database,
++  List<String>? extraArgs,
++  bool debug,
++) async {
++  File(clangTidyYamlCache).writeAsBytesSync([]);
++  if (checks == '-*') return <TidyNotification>[];
++  var exe = makeClangToolExeVersion('clang-tidy', version);
++  var args = [
++    "--export-fixes=${clangTidyYamlCache.replaceAll('/', p.separator)}",
++    '--format-style=${style.isEmpty ? 'none' : style}',
++  ];
++  if (checks.isNotEmpty) args.add("--checks='$checks'");
++  if (database.isNotEmpty) {
++    args.addAll(
++        ['-p', p.isRelative(database) ? p.absolute(database) : database]);
++  }
++  var ranges = file.linesAdded;
++  if (ranges.isNotEmpty) {
++    var lineFilter = {
++      "name": file.name.replaceAll('/', p.separator),
++      "lines": ranges
++    };
++    args.add('--line-filter=[${jsonEncode(lineFilter).toString()}]');
++  }
++  if (extraArgs != null && extraArgs.isNotEmpty) {
++    for (var arg in extraArgs) {
++      args.add('--extra-args=$arg');
++    }
++  }
++  args.add(file.name.replaceAll('\\', '/'));
++  log.info('Running "$exe ${args.join(' ')}"');
++  var stderrLines = <String>[];
++  var result = await subprocessRun(exe,
++      args: args, captureStderr: stderrLines, allowThrows: false);
++  if (debug) File(clangTidyNoteCache).writeAsStringSync(result);
++  if (stderrLines.isNotEmpty) {
++    log.config(
++      'clang-tidy made the following summary:\n\t${stderrLines.join("\n\t")}',
++    );
++  }
++  return parseTidyOutput(file, result);
++}
+diff --git a/lib/cli.dart b/lib/cli.dart
+new file mode 100644
+index 0000000..c87f467
+--- /dev/null
++++ b/lib/cli.dart
+@@ -0,0 +1,113 @@
++import 'package:args/args.dart';
++
++/// Create an [ArgParser] for parsing the CLI arguments
++ArgParser getParser() {
++  var parser = ArgParser();
++  parser.addFlag(
++    'help',
++    abbr: 'h',
++    negatable: false,
++    help: 'Show this information and exit',
++  );
++  parser.addFlag(
++    'verbosity',
++    abbr: 'v',
++    negatable: false,
++    help: 'Show verbose debugging output',
++  );
++  parser.addOption(
++    'database',
++    abbr: 'p',
++    defaultsTo: '',
++    help: 'The path to the compilation database.',
++  );
++  parser.addOption(
++    'style',
++    abbr: 's',
++    defaultsTo: 'llvm',
++    help: 'The style guidelines to use for clang-format. '
++        'Accepted values depend on the version of clang being used.',
++  );
++  parser.addOption(
++    'tidy-checks',
++    abbr: 't',
++    defaultsTo: 'boost-*,bugprone-*,performance-*,readability-*,portability-*,'
++        'modernize-*,clang-analyzer-*,cppcoreguidelines-*',
++    help: 'The checks to use for clang-tidy. Set this to an empty string '
++        "('') to use clang-tidy file(s). Use '-*' to disable clang-tidy "
++        'analysis.',
++  );
++  parser.addOption(
++    'version',
++    abbr: 'V',
++    defaultsTo: '',
++    help: 'The clang version to use.',
++  );
++  parser.addOption(
++    'extensions',
++    abbr: 'e',
++    defaultsTo: 'c,h,C,H,cpp,hpp,cc,hh,c++,h++,cxx,hxx',
++    help: 'A comma-separated list of file extensions to analyze',
++  );
++  parser.addOption(
++    'repo-root',
++    abbr: 'r',
++    defaultsTo: '.',
++    help: 'The path to the repository root',
++  );
++  parser.addOption(
++    'ignore',
++    abbr: 'i',
++    defaultsTo: '.github',
++    help: 'A bar separated list of paths to ignore. A path can be explicitly '
++        'included by prefixing the path with a exclamation mark (`!`).',
++  );
++  parser.addFlag(
++    'lines-changed-only',
++    abbr: 'l',
++    negatable: false,
++    help: 'Only analyze lines changed in the commit or pull request.',
++  );
++  parser.addFlag(
++    'files-changed-only',
++    abbr: 'f',
++    help: 'Only analyze files changed in the commit or pull request. '
++        'This is automatically enabled when `--lines-changed-only` is enabled. '
++        'For private repositories, a `GITHUB_TOKEN` is required.',
++  );
++  parser.addOption(
++    'thread-comments',
++    abbr: 'c',
++    defaultsTo: 'false',
++    allowed: ['true', 'false', 'update'],
++    help: 'Enable feedback in the form of a thread comment ',
++  );
++  parser.addFlag(
++    'step-summary',
++    abbr: 'w',
++    defaultsTo: false,
++    negatable: false,
++    help: 'Enable the use of thread comments as feedback. '
++        'For private repositories, a `GITHUB_TOKEN` is required.',
++  );
++  parser.addFlag(
++    'file-annotations',
++    abbr: 'a',
++    defaultsTo: true,
++    help: '',
++  );
++  parser.addFlag(
++    'lgtm',
++    abbr: 'g',
++    defaultsTo: false,
++    help: 'Post a "Looks Good To Me" when checks pass. '
++        'Only applies to `thread-comments` feature.',
++  );
++  return parser;
++}
++
++/// Display usage/help in the console.
++void showHelp(ArgParser parser) {
++  print('Usage: cpp-linter [OPTIONS] [-- extra-args to clang-tidy]');
++  print('\n${parser.usage}');
++}
+diff --git a/lib/common.dart b/lib/common.dart
+new file mode 100644
+index 0000000..f8764bf
+--- /dev/null
++++ b/lib/common.dart
+@@ -0,0 +1,190 @@
++import 'dart:convert';
++import 'dart:io';
++import 'package:cpp_linter_dart/clang_format.dart';
++import 'package:cpp_linter_dart/clang_tidy.dart';
++import 'package:process_run/shell.dart';
++import 'package:path/path.dart' as p;
++
++/// Describes if using a CI environment (as detected from the `CI` env var).
++const isOnRunner = bool.fromEnvironment('CI', defaultValue: false);
++
++/// The name of the cached YAML output file used to parse clang-tidy advice.
++const clangTidyYamlCache = '.cpp_linter_cache/clang_tidy_output.yml';
++
++/// The name of the cached file containing stdout used to parse clang-tidy notes.
++const clangTidyNoteCache = '.cpp_linter_cache/clang-tidy-output.txt';
++
++/// The name of the cached XML output used to parse clang-format advice.
++const clangFormatXmlCache = '.cpp_linter_cache/clang_format_output.xml';
++
++/// A generic representation of a file. This is used to store information
++/// commonly accessed by other functionality.
++class FileObj {
++  /// The ranges of line numbers in the diff. Not really used.
++  List<List<int>> diffChunks = [];
++
++  /// The list of numbers that were added (as evident in a diff).
++  List<int> additions = [];
++
++  /// The ranges of lines added. This is only set if the file was found as part
++  /// of a git diff. It is a consolidated version of [additions].
++  List<List<int>> linesAdded = [];
++
++  /// The file name (using posix path delimiters).
++  String name;
++
++  /// Create a [FileObj] corresponding to the file's [name].
++  FileObj(this.name);
++}
++
++/// Run an executable in a separate [Shell] instance. (asynchronous)
++///
++/// ## Parameters
++/// - [exe] ([String]): The executable name.
++/// - [args] ([List]<[String]>?]): A nullable list of strings that will be
++///   passed as arguments to the executable. If null, no arguments are passed
++///   to the executable.
++/// - [captureStderr] ([List]<[String]>?]): A nullable list of strings that will
++///   be used to capture the executable's error output (from stderr). If set to
++///   null (the default value), then the executable's stderr is logged to the
++///   console.
++/// - [allowThrows] ([bool]): Set this to `false` to ignore unsuccessful exit
++///   codes returned by the executable.
++/// ## Returns
++/// The executable's output (from stdout) is returned as a [String]
++Future<String> subprocessRun(
++  String exe, {
++  List<String>? args,
++  List<String>? captureStderr,
++  bool allowThrows = true,
++}) async {
++  List<String> stdoutLines = [];
++  var stdOutController = ShellLinesController();
++  stdOutController.stream.listen((line) {
++    stdoutLines.add(line);
++  });
++  var shell = Shell(
++      stdout: stdOutController.sink, verbose: false, throwOnError: allowThrows);
++  if (captureStderr != null) {
++    var stderrController = ShellLinesController();
++    stderrController.stream.listen((line) {
++      captureStderr.add(line);
++    });
++    shell = Shell(
++        stdout: stdOutController.sink,
++        stderr: stderrController.sink,
++        verbose: false);
++  }
++  try {
++    if (args == null) {
++      await shell.run(exe);
++    } else {
++      await shell.runExecutableArguments(exe, args);
++    }
++  } catch (e) {
++    print(e);
++  }
++  return stdoutLines.join('\n');
++}
++
++/// Assemble an executable name for the clang [tool] based on the [version].
++///
++/// If the [version] argument is an integer, then this returns the [tool] name
++/// with the [version] number and a system-appropriate suffix. On Windows, a
++/// [version] integer is ignored since multiple versions of clang tools are not
++/// installed to the same path.
++///
++/// If the [version] argument is an existing path, then the returned [String]
++/// represents the absolute path to the found executable; relative paths are
++/// resolved to the working [Directory] (which can be changed with the CLI arg
++/// `--repo-root` or `-r`).
++///
++/// As a fallback, this simply returns the [tool] with an appropriate suffix
++/// (`'.exe'` on Windows or `''` for others).
++String makeClangToolExeVersion(String tool, String version) {
++  var suffix = Platform.isWindows ? '.exe' : '';
++  if (int.tryParse(version) != null) {
++    // is version a number
++    if (Platform.isWindows) return '$tool$suffix';
++    return '$tool-$version$suffix';
++  }
++  // treat version as an explicit path
++  var versionPath = p.absolute(version);
++  var possibles = [
++    File('$versionPath/bin/$tool$suffix'),
++    File('$versionPath/$tool$suffix'),
++  ];
++  for (final possible in possibles) {
++    if (possible.existsSync()) return possible.path;
++  }
++  // version path was non-existent or empty
++  return '$tool$suffix';
++}
++
++/// Translates a byte [offset] into a [List] of [int]s that respectively
++/// describe the [filename]'s number of lines and number of columns on the last
++/// line.
++(int, int) getLineAndColsFromOffset(String filename, int offset) {
++  var contents = File(filename).readAsBytesSync().getRange(0, offset);
++  var lines = utf8.decode(contents.toList()).split('\n');
++  var cols = lines.last.length;
++  return (lines.length, cols);
++}
++
++String makeComment(
++  List<FormatFix> formatAdvice,
++  List<TidyNotification> tidyNotes,
++  bool linesChangedOnly,
++) {
++  var result = '';
++  var formatComment = '';
++  var tidyComment = '';
++  for (final advice in formatAdvice) {
++    if (advice.replacements.isNotEmpty) {
++      var shouldNotify = true;
++      if (linesChangedOnly) {
++        for (final replacement in advice.replacements) {
++          if (!replacement
++              .any((element) => advice.file.additions.contains(element.line))) {
++            shouldNotify = false;
++          }
++        }
++      }
++      if (shouldNotify) {
++        formatComment += '\n- ${advice.file.name}';
++      }
++    }
++  }
++  for (final note in tidyNotes) {
++    final shouldNotify =
++        linesChangedOnly ? note.file.additions.contains(note.line) : true;
++    if (shouldNotify) {
++      var concernedCode = note.srcLines.join('\n');
++      if (concernedCode.isNotEmpty && !concernedCode.endsWith('\n')) {
++        concernedCode += '\n';
++      }
++      if (concernedCode.isNotEmpty) {
++        concernedCode =
++            '```${p.extension(note.file.name).replaceFirst('.', '')}\n'
++            '$concernedCode```';
++      }
++      tidyComment +=
++          '**${note.file.name}:${note.line}:${note.cols}:** ${note.type}: '
++          '[${note.diagnostic}]\n> ${note.info}\n\n$concernedCode\n\n';
++    }
++  }
++  if (formatComment.isNotEmpty || tidyComment.isNotEmpty) {
++    result = ':warning:\nSome files did not pass the configured checks!\n';
++    if (formatComment.isNotEmpty) {
++      result += '\n<details><summary>clang-format reports: <strong>'
++          '${formatAdvice.length} file(s) not formatted</strong></summary>\n'
++          '$formatComment\n\n</details>';
++    }
++    if (tidyComment.isNotEmpty) {
++      result += '\n<details><summary>clang-tidy reports: <strong>'
++          '${tidyNotes.length} concerns(s)</strong></summary>\n\n'
++          '$tidyComment</details>';
++    }
++  }
++  return result;
++}
+diff --git a/lib/git.dart b/lib/git.dart
+new file mode 100644
+index 0000000..ca1d3a8
+--- /dev/null
++++ b/lib/git.dart
+@@ -0,0 +1,140 @@
++import 'dart:io';
++import 'dart:convert';
++import 'package:cpp_linter_dart/logger.dart';
++import 'package:path/path.dart' as p;
++import 'common.dart';
++
++/// Get the SHA of the commit's [parent]. By default this get the last commit's
++/// SHA, but the [parent] value can be increased to fetch the SHA of grandparent
++/// commit (ie. getSha(3) returns the third previous commit's SHA).
++Future<String> getSha({int parent = 1}) async {
++  return subprocessRun('git', args: ["log", "-$parent", "--format=%H"]);
++}
++
++/// Get the diff for the currently staged files or the current commit if no
++/// changes were made.
++Future<String> getDiff(bool debug) async {
++  var sha = await getSha();
++  log.info('Getting diff between HEAD..$sha');
++  var result = await subprocessRun('git', args: ['status', '-v']);
++  var diffStart = result.indexOf('diff --git');
++  if (diffStart < 0) {
++    log.warning('There was no diff found.');
++    return '';
++  }
++  var diff = result.substring(diffStart);
++  if (debug) {
++    var diffName = p.join(
++      p.current,
++      '.cpp_linter_cache',
++      'HEAD..${sha.substring(0, 6)}.diff',
++    );
++    File(diffName).writeAsStringSync(
++      diff,
++      mode: FileMode.writeOnly,
++      encoding: utf8,
++    );
++  }
++  return diff;
++}
++
++/// Parses a file's name from the diff chunk's front matter. Binary files are
++/// ignored (returns `null`).
++String? getFileNameFromFrontMatter(String frontMatter) {
++  var diffFileName = RegExp(r"^\+\+\+\sb?/(.*)$", multiLine: true);
++  var fileNameMatch = diffFileName.firstMatch(frontMatter);
++  if (fileNameMatch != null) {
++    var match = fileNameMatch.group(1);
++    if (match != null) return match;
++  }
++
++  var diffRenamedFile = RegExp(r"^rename to (.*)$", multiLine: true);
++  var isRenamed = diffRenamedFile.firstMatch(frontMatter);
++  if (isRenamed != null) {
++    var match = isRenamed.group(1);
++    if (match != null && frontMatter.trimLeft().startsWith('similarity')) {
++      return match;
++    }
++  }
++
++  var diffBinaryFile = RegExp(r"^Binary\sfiles\s", multiLine: true);
++  var isBinary = diffBinaryFile.firstMatch(frontMatter);
++  if (isBinary != null) {
++    log.config('Unrecognized diff chunk starting with:\n$frontMatter');
++  }
++  return null;
++}
++
++/// Consolidates a [List]<[int]> of line numbers into a [List] of ranges
++/// ([List]<[int]>) describing the beginning and ending of the multiple ranges.
++List<List<int>> consolidateListToRanges(List<int> numbers) {
++  List<List<int>> result = [];
++  int i = 0;
++  for (final number in numbers) {
++    if (i == 0) {
++      // start first range
++      result.add([number]);
++    } else if (number - 1 != numbers[i - 1]) {
++      // end of a range
++      result.last.add(numbers[i - 1] + 1); // complete the range
++      result.add([number]); // start a new range
++    }
++    i++;
++  }
++  result.last.add(numbers.last + 1); // complete last range
++  return result;
++}
++
++/// A [RegExp] pattern that matches a diff hunk's line information.
++RegExp hunkInfo = RegExp(r'@@\s\-\d+,\d+\s\+(\d+,\d+)\s@@', multiLine: true);
++
++/// Parses a s diff [patch] for a single [file]. Line changes are stored to the
++/// [FileObj.linesAdded] or [FileObj.diffChunks].
++void parsePatch(String patch, FileObj file) {
++  List<int> additions = [];
++  List<List<int>> ranges = [];
++  var lineNumberInDiff = 0; // should correspond to the file's line number
++  for (final line in patch.split('\n')) {
++    var hunkHeader = hunkInfo.firstMatch(line);
++    if (hunkHeader != null) {
++      // starting new hunk
++      var match = hunkHeader.group(1);
++      var range = match!.split(',');
++      ranges.add([int.parse(range.first), int.parse(range.last)]);
++      lineNumberInDiff = int.parse(range.first);
++      continue;
++    }
++    if (line.startsWith('+')) {
++      additions.add(lineNumberInDiff);
++    }
++    if (!line.startsWith('-')) {
++      lineNumberInDiff++;
++    }
++  }
++  file.linesAdded = consolidateListToRanges(additions);
++  file.additions = additions;
++  file.diffChunks = ranges;
++}
++
++/// Parses a complete [diff] into a [List] of [FileObj]s (binary files are
++/// ignored).
++List<FileObj> parseDiff(String diff) {
++  List<FileObj> files = [];
++  if (diff.isEmpty) return files;
++  var fileChunks = diff.split(RegExp(r'^diff --git a/.*$', multiLine: true));
++  fileChunks.removeWhere((element) => element.isEmpty);
++  for (var chunk in fileChunks) {
++    var firstHunk = chunk.indexOf(hunkInfo);
++    if (firstHunk < 0) {
++      continue; // chunk start is unrecognized
++    }
++    var chunkFrontMatter = chunk.substring(0, firstHunk);
++    var fileName = getFileNameFromFrontMatter(chunkFrontMatter);
++    if (fileName == null) {
++      continue;
++    }
++    files.add(FileObj(fileName));
++    parsePatch(chunk.substring(firstHunk), files.last);
++  }
++  return files;
++}
+diff --git a/lib/github_requests.dart b/lib/github_requests.dart
+new file mode 100644
+index 0000000..35a6872
+--- /dev/null
++++ b/lib/github_requests.dart
+@@ -0,0 +1,332 @@
++import 'dart:convert';
++import 'dart:io';
++import 'package:cpp_linter_dart/clang_format.dart';
++import 'package:cpp_linter_dart/clang_tidy.dart';
++import 'package:http/http.dart' as requests;
++import 'common.dart';
++import 'logger.dart';
++import 'git.dart';
++
++/// Corresponds `GITHUB_API_URL` environment variable.
++const githubApiUrl = String.fromEnvironment(
++  'GITHUB_API_URL',
++  defaultValue: 'https://api.github.com',
++);
++
++/// A [List] of the protocol and domain corresponding to [githubApiUrl].
++final ghApiUri = githubApiUrl.split('://');
++
++/// A path used in CI to output a step summary
++final githubStepSummary = String.fromEnvironment('GITHUB_STEP_SUMMARY');
++
++/// Corresponds `GITHUB_REPOSITORY` environment variable.
++const githubRepository = String.fromEnvironment('GITHUB_REPOSITORY');
++
++/// Corresponds `GITHUB_SHA` environment variable.
++const githubSha = String.fromEnvironment('GITHUB_SHA');
++
++/// Corresponds `GITHUB_EVENT_NAME` environment variable.
++const githubEventName = String.fromEnvironment(
++  'GITHUB_EVENT_NAME',
++  defaultValue: 'unknown',
++);
++
++/// Corresponds `GITHUB_WORKSPACE` environment variable.
++const githubWorkspace = String.fromEnvironment('GITHUB_WORKSPACE');
++
++/// Corresponds `GITHUB_EVENT_PAYLOAD` environment variable.
++const githubEventPath = String.fromEnvironment('GITHUB_EVENT_PAYLOAD');
++
++/// A [Map] parsed from the file pointed to by [githubEventPath].
++final Map<String, Object> ghEventPayload = githubEventPath.isEmpty
++    ? {}
++    : jsonDecode(
++        File(githubEventPath).readAsStringSync(),
++      );
++
++/// Corresponds `GITHUB_TOKEN` environment variable (or `GIT_REST_API` if
++/// `GITHUB_TOKEN` is not set).
++const githubToken = String.fromEnvironment(
++  'GITHUB_TOKEN',
++  defaultValue: String.fromEnvironment('GIT_REST_API'),
++);
++
++/// Creates a [Map] for use as a header to Github REST API calls.
++/// Set the [useDiff] parameter to `true` to enable diff formatted payloads
++/// returned. By default, the payload is formatted as `text/json`.
++///
++/// If [githubToken] is set, then it is used as `Authorization` token.
++Map<String, String> makeHeaders({bool useDiff = false}) {
++  var fmt = useDiff ? 'diff' : 'text/json';
++  var headers = {'Accept': 'application/vnd.github.$fmt'};
++  if (githubToken.isNotEmpty) {
++    headers['Authorization'] = 'token $githubToken';
++  }
++  return headers;
++}
++
++/// Use the Github REST API to get a list of changed files according to the
++/// [githubEventName].
++Future<List<FileObj>> getListOfChangedFiles(bool debug) async {
++  if (isOnRunner) {
++    var urlPath = 'repos/$githubRepository';
++    if (githubEventName == 'pull_request') {
++      urlPath = '$urlPath/pulls/${ghEventPayload['number']}';
++    } else {
++      if (githubEventName != 'push') {
++        log.warning(
++          'Triggered on unsupported event $githubEventName; '
++          'behaving like a commit',
++        );
++      }
++      urlPath = '$urlPath/commits/$githubSha';
++    }
++    var url = Uri(
++      scheme: ghApiUri.first,
++      host: ghApiUri.last,
++      path: urlPath,
++    );
++    log.info('Fetching files list from url: $url');
++    var response = await requests.get(url, headers: makeHeaders(useDiff: true));
++    logRequestResponse(response);
++    return parseDiff(response.body);
++  }
++  return parseDiff(await getDiff(debug));
++}
++
++int makeAnnotations(
++  List<FormatFix> formatAdvice,
++  List<TidyNotification> tidyNotes,
++  bool fileAnnotations,
++  String style,
++  bool linesChangedOnly,
++) {
++  var total = 0;
++  for (final advice in formatAdvice) {
++    final message = advice.logCommand(style, linesChangedOnly);
++    total += message.isNotEmpty ? 1 : 0;
++    if (fileAnnotations) {
++      logCommander.info(message);
++    }
++  }
++  for (final note in tidyNotes) {
++    final message = note.logCommand(linesChangedOnly);
++    total += message.isNotEmpty ? 1 : 0;
++    if (fileAnnotations) {
++      logCommander.info(message);
++    }
++  }
++  return total;
++}
++
++/// Traverse the list of comments made by a specific user
++/// and remove all.
++///
++/// [commentsUrl] -- The URL used to fetch the comments.
++/// [userId] -- The user's account id number.
++/// [commentCount] -- the number of comments to traverse via REST API.
++/// [deletePost] -- A flag to actually delete the applicable comment.
++///
++/// ### Returns
++/// The `commentId` of the comment that was previously posted (or null in case
++/// of failure).
++Future<int?> removeBotComments(
++  Uri commentsUrl,
++  int userId,
++  int commentCount,
++  bool deletePost,
++) async {
++  log.info('commentsUrl: $commentsUrl');
++  int? commentId;
++  while (commentCount > 0) {
++    var response = await requests.get(commentsUrl);
++    if (response.statusCode != 200) {
++      return null; // error getting comments for the thread; stop here
++    }
++    var comments = jsonDecode(response.body) as List<Map<String, Object>>;
++    commentCount -= comments.length;
++    for (final comment in comments) {
++      // only search for comments from the user's ID and
++      // whose comment body begins with a specific html comment
++      var commentUser = comment['user'] as Map<String, Object>;
++      if (commentUser['id'] as int == userId &&
++          // the specific html comment is our action's name
++          (comment['body'] as String)
++              .startsWith('<!-- cpp linter action -->')) {
++        if (deletePost || (!deletePost && commentId != null)) {
++          // remove outdated comments (if not updating it), but
++          // don't remove the first comment if only updating the comment
++          var commentUrl = Uri.dataFromString(comment['url'] as String);
++          response = await requests.delete(commentUrl, headers: makeHeaders());
++          log.info(
++            'Got ${response.statusCode} from DELETE ${commentUrl.path}',
++          );
++          logRequestResponse(response);
++        }
++        commentId = comment['id'] as int;
++      }
++      // log.config(
++      //   'comment id ${comment['id']} from user ${commentUser['login']} '
++      //   '(${commentUser['id']})',
++      // );
++    }
++    await File('.cpp_linter_cache/comments.json')
++        .writeAsString(comments.toString(), mode: FileMode.append);
++  }
++  return commentId;
++}
++
++/// Update a thread comment.
++///
++/// - [comment] The new comment body (could be empty if strictly removing an
++///   outdated comment).
++/// - [userId] -- The user's account ID number.
++/// - [commentsUrl] -- The url used to interact with the REST API via http
++///   requests.
++/// - [commentCount] -- The number of previous/outdated comment to traverse.
++/// - [updateOnly] -- This flag allows  only updating the first comment in the
++/// event's thread (other multiple comments made with [userId] will be removed).
++Future<void> updateComment(
++  String comment,
++  int userId,
++  Uri commentsUrl,
++  int commentCount,
++  bool updateOnly,
++) async {
++  final commentId = await removeBotComments(
++    commentsUrl,
++    userId,
++    commentCount,
++    comment.isEmpty ? false : updateOnly,
++  );
++  if (comment.isNotEmpty) {
++    var payload = jsonEncode({'body': comment});
++    log.config('payload body:\n$payload');
++    final requests.Response response;
++    if (updateOnly && commentId != null) {
++      commentsUrl = Uri(
++        scheme: ghApiUri.first,
++        host: ghApiUri.last,
++        path: '${commentsUrl.path}/$commentId',
++      );
++      response = await requests.patch(
++        commentsUrl,
++        headers: makeHeaders(),
++        body: payload,
++      );
++      log.info('Got ${response.statusCode} from PATCHing comment');
++    } else {
++      response = await requests.post(
++        commentsUrl,
++        headers: makeHeaders(),
++        body: payload,
++      );
++      log.info('Got ${response.statusCode} from POSTing comment');
++    }
++    logRequestResponse(response);
++  }
++}
++
++/// POST action's results for a push event.
++///
++/// - [baseUri] -- The root of the url used to interact with the REST API via
++/// http requests.
++/// - [userId] -- The user's account ID number.
++/// - [comment] -- The Markdown comment to post.
++/// - [updateOnly] -- This flag allows  only updating the first comment in the
++/// event's thread (other multiple comments made with [userId] will be removed).
++///
++/// ### Returns
++/// A bool describing if any failures were encountered.
++Future<bool> postPrComment(
++    String baseUri, int userId, String comment, bool updateOnly) async {
++  baseUri = '${baseUri}issues/${ghEventPayload['number']}';
++  var commentsUrl = Uri(
++    scheme: ghApiUri.first,
++    host: ghApiUri.last,
++    path: '$baseUri/comments',
++  );
++  var response = await requests.get(
++    Uri(
++      scheme: ghApiUri.first,
++      host: ghApiUri.last,
++      path: baseUri,
++    ),
++    headers: makeHeaders(),
++  );
++  logRequestResponse(response);
++  final int commentCount;
++  if (response.statusCode == 200) {
++    commentCount = (jsonDecode(response.body) as Map<String, int>)['comments']!;
++  } else {
++    return false;
++  }
++  await updateComment(comment, userId, commentsUrl, commentCount, !updateOnly);
++  return true;
++}
++
++/// POST action's results for a push event.
++///
++/// - [baseUri] -- The root of the url used to interact with the REST API via
++/// http requests.
++/// - [userId] -- The user's account ID number.
++/// - [comment] -- The Markdown comment to post.
++/// - [updateOnly] -- This flag allows  only updating the first comment in the
++/// event's thread (other multiple comments made with [userId] will be removed).
++///
++/// ### Returns
++/// A bool describing if any failures were encountered.
++Future<bool> postPushComment(
++    String baseUri, int userId, String comment, bool updateOnly) async {
++  baseUri = '${baseUri}commits/$githubSha';
++  final commentsUrl = Uri(
++    scheme: ghApiUri.first,
++    host: ghApiUri.last,
++    path: '$baseUri/comments',
++  );
++  var response = await requests.get(
++    Uri(
++      scheme: ghApiUri.first,
++      host: ghApiUri.last,
++      path: baseUri,
++    ),
++    headers: makeHeaders(),
++  );
++  logRequestResponse(response);
++  final int commentCount;
++  if (response.statusCode == 200) {
++    commentCount = (jsonDecode(response.body)
++        as Map<String, Map<String, int>>)['commit']!['comment_count']!;
++  } else {
++    return false;
++  }
++  await updateComment(comment, userId, commentsUrl, commentCount, !updateOnly);
++  return true;
++}
++
++/// Post action's results using REST API.
++///
++/// [comment] -- The comment to post (could be an empty string if only
++/// deleting/updating a comment).
++/// [updateOnly] -- This flag allows  only updating the first comment in the
++/// event's thread (other multiple comments made with [userId] will be removed).
++/// [userId] -- The user's account ID number. Defaults to the generic bot's ID.
++Future<void> postResults(
++  String comment,
++  bool updateOnly, {
++  int userId = 41898282,
++}) async {
++  if (githubToken.isNotEmpty) {
++    log.severe('The GITHUB_TOKEN is required!');
++    setExitCode(1);
++    assert(githubToken.isNotEmpty);
++  }
++  final baseUri = '/repos/$githubRepository/';
++  var checksPassed = true;
++  if (githubEventName == 'pull_request') {
++    checksPassed = await postPrComment(baseUri, userId, comment, updateOnly);
++  } else if (githubEventName == 'push') {
++    checksPassed = await postPushComment(baseUri, userId, comment, updateOnly);
++  }
++  setExitCode(checksPassed ? 1 : 0);
++}
+diff --git a/lib/logger.dart b/lib/logger.dart
+new file mode 100644
+index 0000000..ef7f815
+--- /dev/null
++++ b/lib/logger.dart
+@@ -0,0 +1,81 @@
++import 'dart:convert';
++import 'dart:io';
++import 'package:logging/logging.dart' as logging;
++import 'package:http/http.dart' show Response;
++import 'package:cpp_linter_dart/common.dart';
++
++/// A logger used to prompt for user-related output.
++final log = logging.Logger('CPP-LINTER');
++
++/// A logger used to GitHub CI log commands.
++final logCommander = logging.Logger('CI log commands');
++
++/// Setup loggers [log] and [logCommander]. The [debugging] parameter controls
++/// the [logging.Level] in correspondence to the CLI argument `--verbose` or
++/// `-v`.
++void setupLoggers(bool debugging) {
++  // needed to control logging levels independently from root logger
++  logging.hierarchicalLoggingEnabled = true;
++  logging.Logger.root.level = logging.Level.INFO; // good practice?
++
++  log.level = debugging ? logging.Level.CONFIG : logging.Level.INFO;
++  log.onRecord.listen((event) {
++    var level = switch (event.level) {
++      // translate CONFIG level as DEBUG messages
++      logging.Level.CONFIG => 'DEBUG',
++      // translate SHOUT level as WARNING messages
++      logging.Level.SHOUT => 'WARNING',
++      // all other levels use expected descriptions
++      _ => event.level.toString(),
++    };
++    print('$level: ${event.loggerName}: ${event.message}');
++  });
++  logCommander.level = logging.Level.INFO;
++  logCommander.onRecord.listen((event) => print(event.message));
++}
++
++/// Use the [logCommander] to start a group of CI log statements.
++void startLogGroup(String name) {
++  logCommander.info('::group::$name');
++}
++
++/// Use the [logCommander] to end a group of CI log statements.
++void endLogGroup() {
++  logCommander.info('::endgroup::');
++}
++
++/// Use the [log] logger to show any unsuccessful HTTP requests (as indicated by
++/// [response]).
++void logRequestResponse(Response response) {
++  if (response.statusCode >= 400) {
++    log.shout(
++        'response returned ${response.statusCode} message: ${response.body}');
++  }
++}
++
++/// Use the [logCommander] to set Github Action output variable in CI to
++/// [status].
++int setExitCode(int status) {
++  var ghOutPath = String.fromEnvironment('GITHUB_OUTPUT');
++  if (ghOutPath.isNotEmpty) {
++    var ghOut = File(ghOutPath);
++    ghOut.writeAsStringSync(
++      'checks-failed=$status\n',
++      mode: FileMode.append,
++      encoding: utf8,
++    );
++  }
++  return status;
++}
++
++/// Use the [log] logger to display the [files] getting attention.
++void lsFiles(List<FileObj> files) {
++  if (files.isEmpty) {
++    log.info('No source files found.');
++  } else {
++    log.info('Giving attention to the following files:');
++    for (final file in files) {
++      log.info('\t${file.name}');
++    }
++  }
++}
+diff --git a/lib/run.dart b/lib/run.dart
+new file mode 100644
+index 0000000..d4878c0
+--- /dev/null
++++ b/lib/run.dart
+@@ -0,0 +1,185 @@
++import 'dart:io';
++import 'package:path/path.dart' as p;
++import 'package:ini/ini.dart' show Config;
++import 'logger.dart';
++import 'common.dart' show FileObj;
++import 'clang_format.dart';
++import 'clang_tidy.dart';
++
++/// Parse the [userInput] (from CLI `--ignore` or `-i` argument) into a [List]
++/// of [Set]s that respectively correspond to ignored and not-ignored files.
++List<Set<String>> parseIgnoredOption(String userInput) {
++  Set<String> ignored = {};
++  Set<String> notIgnored = {};
++  for (var path in userInput.split('|')) {
++    bool isNotIgnored = path.startsWith("!");
++    path = path.replaceFirst(RegExp(r'[!]\.\/'), '');
++    if (isNotIgnored) {
++      notIgnored.add(path);
++    } else {
++      ignored.add(path);
++    }
++  }
++
++  // check against git submodule paths
++  var gitModules = p.join(p.current, '.gitmodules');
++  if (File(gitModules).existsSync()) {
++    var config = Config.fromStrings(File(gitModules).readAsLinesSync());
++    for (final section in config.sections()) {
++      var path = config.get(section, 'path');
++      if (notIgnored.contains(path!)) {
++        // if explicitly not ignored
++        ignored.add(path);
++      }
++    }
++  }
++
++  if (ignored.isNotEmpty) {
++    log.info('Ignoring the following paths/files:');
++    for (final path in ignored) {
++      log.info('\t$path');
++    }
++  }
++  if (notIgnored.isNotEmpty) {
++    log.info('Not ignoring the following paths/files:');
++    for (final path in notIgnored) {
++      log.info('\t$path');
++    }
++  }
++  return [ignored, notIgnored];
++}
++
++/// Is the specified [file] in the specified [fileSet]?
++bool isFileInSet(FileObj file, Set<String> fileSet) {
++  for (final filePath in fileSet) {
++    if (Directory(filePath).existsSync()) {
++      if (p.isWithin(filePath, file.name)) {
++        return true;
++      }
++    }
++  }
++  return fileSet.contains(file.name);
++}
++
++/// Filter [files] that don't use the specified [extensions] in accordance
++/// to the specified [ignored] and/or [notIgnored] sets of paths/files. If
++/// [linesChangedOnly] is set `true`, then only [files] with a non-empty list of
++/// [FileObj.linesAdded] will be included.
++void filterOutNonSourceFiles(
++  List<FileObj> files,
++  List<String> extensions,
++  Set<String> ignored,
++  Set<String> notIgnored,
++  bool linesChangedOnly,
++) {
++  files.removeWhere((file) {
++    var ext = p.extension(file.name);
++    if (extensions.contains(ext)) {
++      bool ignore = isFileInSet(file, ignored);
++      if (ignore && isFileInSet(file, notIgnored)) {
++        ignore = false;
++      }
++      if (!ignore && linesChangedOnly && file.linesAdded.isEmpty) {
++        ignore = true;
++      }
++      return ignore;
++    }
++    return true;
++  });
++  lsFiles(files);
++}
++
++/// Aggregate a [List] of [FileObj]s by walking the working [Directory] (as set
++/// with the CLI `--repo-root` or `-r` arguments).
++List<FileObj> listSourceFiles(
++  List<String> extensions,
++  Set<String> ignored,
++  Set<String> notIgnored,
++) {
++  List<FileObj> walkDir(Directory dir) {
++    if (dir.path != Directory.current.path) {
++      log.config('Crawling ${p.relative(dir.path)}');
++    }
++    List<FileObj> result = [];
++    for (final path in dir.listSync(followLinks: true)) {
++      var entityType = path.statSync().type;
++      if (entityType == FileSystemEntityType.directory) {
++        if (p.basename(path.path).startsWith('.')) {
++          continue; // dir is hidden; skip it
++        }
++        result.addAll(walkDir(Directory(path.path)));
++      } else if (entityType != FileSystemEntityType.file) {
++        continue;
++      }
++
++      var ext = p.extension(path.path);
++      if (!extensions.contains(ext)) {
++        continue;
++      }
++
++      var relPath = p.relative(path.path);
++      var file = FileObj(relPath);
++      var ignore = isFileInSet(file, ignored);
++      if (ignore && isFileInSet(file, notIgnored)) {
++        ignore = true;
++      }
++      if (!ignore) {
++        result.add(file);
++      }
++    }
++    return result;
++  }
++
++  var result = walkDir(Directory.current);
++  lsFiles(result);
++  return result;
++}
++
++/// Capture and parse output from clang-tody and clang-format (of a specified
++/// [version]) about specified [files] considering [linesChangedOnly], and
++/// clang-format [style].
++Future<(List<FormatFix>, List<TidyAdvice>, List<TidyNotification>)>
++    captureClangToolsOutput(
++  List<FileObj> files,
++  String version,
++  bool linesChangedOnly,
++  String style,
++  String checks,
++  String database,
++  List<String>? extraArgs,
++  bool debug,
++) async {
++  var formatAdvice = <FormatFix>[];
++  const tidyAdvice = <TidyAdvice>[];
++  var tidyNotifications = <TidyNotification>[];
++  for (final file in files) {
++    startLogGroup('Performing checkup on ${file.name}');
++    var notes = await runClangTidy(
++      file,
++      version,
++      style,
++      checks,
++      linesChangedOnly,
++      database,
++      extraArgs,
++      debug,
++    );
++    if (notes.isNotEmpty) tidyNotifications.addAll(notes);
++    // For deployment, we are not actually using the yaml output
++    // var advice = parseYmlAdvice(file);
++    // if (advice.diagnostics.isNotEmpty) tidyAdvice.add(advice);
++
++    var fmtOut = await runClangFormat(
++      file,
++      version,
++      style,
++      linesChangedOnly,
++      debug,
++    );
++    if (fmtOut.replacements.isNotEmpty) {
++      formatAdvice.add(fmtOut);
++    }
++    endLogGroup();
++  }
++  return (formatAdvice, tidyAdvice, tidyNotifications);
++}
+diff --git a/pubspec.lock b/pubspec.lock
+new file mode 100644
+index 0000000..134c592
+--- /dev/null
++++ b/pubspec.lock
+@@ -0,0 +1,429 @@
++# Generated by pub
++# See https://dart.dev/tools/pub/glossary#lockfile
++packages:
++  _fe_analyzer_shared:
++    dependency: transitive
++    description:
++      name: _fe_analyzer_shared
++      sha256: eb376e9acf6938204f90eb3b1f00b578640d3188b4c8a8ec054f9f479af8d051
++      url: "https://pub.dev"
++    source: hosted
++    version: "64.0.0"
++  analyzer:
++    dependency: transitive
++    description:
++      name: analyzer
++      sha256: "69f54f967773f6c26c7dcb13e93d7ccee8b17a641689da39e878d5cf13b06893"
++      url: "https://pub.dev"
++    source: hosted
++    version: "6.2.0"
++  args:
++    dependency: "direct main"
++    description:
++      name: args
++      sha256: eef6c46b622e0494a36c5a12d10d77fb4e855501a91c1b9ef9339326e58f0596
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.4.2"
++  async:
++    dependency: transitive
++    description:
++      name: async
++      sha256: "947bfcf187f74dbc5e146c9eb9c0f10c9f8b30743e341481c1e2ed3ecc18c20c"
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.11.0"
++  boolean_selector:
++    dependency: transitive
++    description:
++      name: boolean_selector
++      sha256: "6cfb5af12253eaf2b368f07bacc5a80d1301a071c73360d746b7f2e32d762c66"
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.1.1"
++  charcode:
++    dependency: transitive
++    description:
++      name: charcode
++      sha256: fb98c0f6d12c920a02ee2d998da788bca066ca5f148492b7085ee23372b12306
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.3.1"
++  collection:
++    dependency: transitive
++    description:
++      name: collection
++      sha256: ee67cb0715911d28db6bf4af1026078bd6f0128b07a5f66fb2ed94ec6783c09a
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.18.0"
++  convert:
++    dependency: transitive
++    description:
++      name: convert
++      sha256: "0f08b14755d163f6e2134cb58222dd25ea2a2ee8a195e53983d57c075324d592"
++      url: "https://pub.dev"
++    source: hosted
++    version: "3.1.1"
++  coverage:
++    dependency: "direct dev"
++    description:
++      name: coverage
++      sha256: "2fb815080e44a09b85e0f2ca8a820b15053982b2e714b59267719e8a9ff17097"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.6.3"
++  crypto:
++    dependency: transitive
++    description:
++      name: crypto
++      sha256: ff625774173754681d66daaf4a448684fb04b78f902da9cb3d308c19cc5e8bab
++      url: "https://pub.dev"
++    source: hosted
++    version: "3.0.3"
++  file:
++    dependency: transitive
++    description:
++      name: file
++      sha256: "5fc22d7c25582e38ad9a8515372cd9a93834027aacf1801cf01164dac0ffa08c"
++      url: "https://pub.dev"
++    source: hosted
++    version: "7.0.0"
++  frontend_server_client:
++    dependency: transitive
++    description:
++      name: frontend_server_client
++      sha256: "408e3ca148b31c20282ad6f37ebfa6f4bdc8fede5b74bc2f08d9d92b55db3612"
++      url: "https://pub.dev"
++    source: hosted
++    version: "3.2.0"
++  glob:
++    dependency: transitive
++    description:
++      name: glob
++      sha256: "0e7014b3b7d4dac1ca4d6114f82bf1782ee86745b9b42a92c9289c23d8a0ab63"
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.1.2"
++  http:
++    dependency: "direct main"
++    description:
++      name: http
++      sha256: "759d1a329847dd0f39226c688d3e06a6b8679668e350e2891a6474f8b4bb8525"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.1.0"
++  http_multi_server:
++    dependency: transitive
++    description:
++      name: http_multi_server
++      sha256: "97486f20f9c2f7be8f514851703d0119c3596d14ea63227af6f7a481ef2b2f8b"
++      url: "https://pub.dev"
++    source: hosted
++    version: "3.2.1"
++  http_parser:
++    dependency: transitive
++    description:
++      name: http_parser
++      sha256: "2aa08ce0341cc9b354a498388e30986515406668dbcc4f7c950c3e715496693b"
++      url: "https://pub.dev"
++    source: hosted
++    version: "4.0.2"
++  ini:
++    dependency: "direct main"
++    description:
++      name: ini
++      sha256: "12a76c53591ffdf86d1265be3f986888a6dfeb34a85957774bc65912d989a173"
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.1.0"
++  io:
++    dependency: transitive
++    description:
++      name: io
++      sha256: "2ec25704aba361659e10e3e5f5d672068d332fc8ac516421d483a11e5cbd061e"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.0.4"
++  js:
++    dependency: transitive
++    description:
++      name: js
++      sha256: f2c445dce49627136094980615a031419f7f3eb393237e4ecd97ac15dea343f3
++      url: "https://pub.dev"
++    source: hosted
++    version: "0.6.7"
++  lints:
++    dependency: "direct dev"
++    description:
++      name: lints
++      sha256: "0a217c6c989d21039f1498c3ed9f3ed71b354e69873f13a8dfc3c9fe76f1b452"
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.1.1"
++  logging:
++    dependency: "direct main"
++    description:
++      name: logging
++      sha256: "623a88c9594aa774443aa3eb2d41807a48486b5613e67599fb4c41c0ad47c340"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.2.0"
++  matcher:
++    dependency: transitive
++    description:
++      name: matcher
++      sha256: "1803e76e6653768d64ed8ff2e1e67bea3ad4b923eb5c56a295c3e634bad5960e"
++      url: "https://pub.dev"
++    source: hosted
++    version: "0.12.16"
++  meta:
++    dependency: transitive
++    description:
++      name: meta
++      sha256: "3c74dbf8763d36539f114c799d8a2d87343b5067e9d796ca22b5eb8437090ee3"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.9.1"
++  mime:
++    dependency: transitive
++    description:
++      name: mime
++      sha256: e4ff8e8564c03f255408decd16e7899da1733852a9110a58fe6d1b817684a63e
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.0.4"
++  node_preamble:
++    dependency: transitive
++    description:
++      name: node_preamble
++      sha256: "6e7eac89047ab8a8d26cf16127b5ed26de65209847630400f9aefd7cd5c730db"
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.0.2"
++  package_config:
++    dependency: transitive
++    description:
++      name: package_config
++      sha256: "1c5b77ccc91e4823a5af61ee74e6b972db1ef98c2ff5a18d3161c982a55448bd"
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.1.0"
++  path:
++    dependency: "direct main"
++    description:
++      name: path
++      sha256: "8829d8a55c13fc0e37127c29fedf290c102f4e40ae94ada574091fe0ff96c917"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.8.3"
++  petitparser:
++    dependency: transitive
++    description:
++      name: petitparser
++      sha256: eeb2d1428ee7f4170e2bd498827296a18d4e7fc462b71727d111c0ac7707cfa6
++      url: "https://pub.dev"
++    source: hosted
++    version: "6.0.1"
++  pool:
++    dependency: transitive
++    description:
++      name: pool
++      sha256: "20fe868b6314b322ea036ba325e6fc0711a22948856475e2c2b6306e8ab39c2a"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.5.1"
++  process_run:
++    dependency: "direct main"
++    description:
++      name: process_run
++      sha256: ceacfac6d566a36c895d64edc7e429efb2d6b6303b5e28d5c13bc59fe6e8974e
++      url: "https://pub.dev"
++    source: hosted
++    version: "0.13.1"
++  pub_semver:
++    dependency: transitive
++    description:
++      name: pub_semver
++      sha256: "40d3ab1bbd474c4c2328c91e3a7df8c6dd629b79ece4c4bd04bee496a224fb0c"
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.1.4"
++  shelf:
++    dependency: transitive
++    description:
++      name: shelf
++      sha256: ad29c505aee705f41a4d8963641f91ac4cee3c8fad5947e033390a7bd8180fa4
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.4.1"
++  shelf_packages_handler:
++    dependency: transitive
++    description:
++      name: shelf_packages_handler
++      sha256: "89f967eca29607c933ba9571d838be31d67f53f6e4ee15147d5dc2934fee1b1e"
++      url: "https://pub.dev"
++    source: hosted
++    version: "3.0.2"
++  shelf_static:
++    dependency: transitive
++    description:
++      name: shelf_static
++      sha256: a41d3f53c4adf0f57480578c1d61d90342cd617de7fc8077b1304643c2d85c1e
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.1.2"
++  shelf_web_socket:
++    dependency: transitive
++    description:
++      name: shelf_web_socket
++      sha256: "9ca081be41c60190ebcb4766b2486a7d50261db7bd0f5d9615f2d653637a84c1"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.0.4"
++  source_map_stack_trace:
++    dependency: transitive
++    description:
++      name: source_map_stack_trace
++      sha256: "84cf769ad83aa6bb61e0aa5a18e53aea683395f196a6f39c4c881fb90ed4f7ae"
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.1.1"
++  source_maps:
++    dependency: transitive
++    description:
++      name: source_maps
++      sha256: "708b3f6b97248e5781f493b765c3337db11c5d2c81c3094f10904bfa8004c703"
++      url: "https://pub.dev"
++    source: hosted
++    version: "0.10.12"
++  source_span:
++    dependency: transitive
++    description:
++      name: source_span
++      sha256: "53e943d4206a5e30df338fd4c6e7a077e02254531b138a15aec3bd143c1a8b3c"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.10.0"
++  stack_trace:
++    dependency: transitive
++    description:
++      name: stack_trace
++      sha256: "73713990125a6d93122541237550ee3352a2d84baad52d375a4cad2eb9b7ce0b"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.11.1"
++  stream_channel:
++    dependency: transitive
++    description:
++      name: stream_channel
++      sha256: ba2aa5d8cc609d96bbb2899c28934f9e1af5cddbd60a827822ea467161eb54e7
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.1.2"
++  string_scanner:
++    dependency: transitive
++    description:
++      name: string_scanner
++      sha256: "556692adab6cfa87322a115640c11f13cb77b3f076ddcc5d6ae3c20242bedcde"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.2.0"
++  synchronized:
++    dependency: transitive
++    description:
++      name: synchronized
++      sha256: "5fcbd27688af6082f5abd611af56ee575342c30e87541d0245f7ff99faa02c60"
++      url: "https://pub.dev"
++    source: hosted
++    version: "3.1.0"
++  term_glyph:
++    dependency: transitive
++    description:
++      name: term_glyph
++      sha256: a29248a84fbb7c79282b40b8c72a1209db169a2e0542bce341da992fe1bc7e84
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.2.1"
++  test:
++    dependency: "direct dev"
++    description:
++      name: test
++      sha256: "9b0dd8e36af4a5b1569029949d50a52cb2a2a2fdaa20cebb96e6603b9ae241f9"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.24.6"
++  test_api:
++    dependency: transitive
++    description:
++      name: test_api
++      sha256: "5c2f730018264d276c20e4f1503fd1308dfbbae39ec8ee63c5236311ac06954b"
++      url: "https://pub.dev"
++    source: hosted
++    version: "0.6.1"
++  test_core:
++    dependency: transitive
++    description:
++      name: test_core
++      sha256: "4bef837e56375537055fdbbbf6dd458b1859881f4c7e6da936158f77d61ab265"
++      url: "https://pub.dev"
++    source: hosted
++    version: "0.5.6"
++  typed_data:
++    dependency: transitive
++    description:
++      name: typed_data
++      sha256: facc8d6582f16042dd49f2463ff1bd6e2c9ef9f3d5da3d9b087e244a7b564b3c
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.3.2"
++  vm_service:
++    dependency: transitive
++    description:
++      name: vm_service
++      sha256: c538be99af830f478718b51630ec1b6bee5e74e52c8a802d328d9e71d35d2583
++      url: "https://pub.dev"
++    source: hosted
++    version: "11.10.0"
++  watcher:
++    dependency: transitive
++    description:
++      name: watcher
++      sha256: "3d2ad6751b3c16cf07c7fca317a1413b3f26530319181b37e3b9039b84fc01d8"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.1.0"
++  web_socket_channel:
++    dependency: transitive
++    description:
++      name: web_socket_channel
++      sha256: d88238e5eac9a42bb43ca4e721edba3c08c6354d4a53063afaa568516217621b
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.4.0"
++  webkit_inspection_protocol:
++    dependency: transitive
++    description:
++      name: webkit_inspection_protocol
++      sha256: "67d3a8b6c79e1987d19d848b0892e582dbb0c66c57cc1fef58a177dd2aa2823d"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.2.0"
++  xml:
++    dependency: "direct main"
++    description:
++      name: xml
++      sha256: af5e77e9b83f2f4adc5d3f0a4ece1c7f45a2467b695c2540381bac793e34e556
++      url: "https://pub.dev"
++    source: hosted
++    version: "6.4.2"
++  yaml:
++    dependency: "direct main"
++    description:
++      name: yaml
++      sha256: "75769501ea3489fca56601ff33454fe45507ea3bfb014161abc3b43ae25989d5"
++      url: "https://pub.dev"
++    source: hosted
++    version: "3.1.2"
++sdks:
++  dart: ">=3.0.6 <4.0.0"
+diff --git a/pubspec.yaml b/pubspec.yaml
+new file mode 100644
+index 0000000..05d2e5f
+--- /dev/null
++++ b/pubspec.yaml
+@@ -0,0 +1,24 @@
++name: cpp_linter_dart
++description: A sample command-line application.
++version: 1.0.0
++# repository: https://github.com/my_org/my_repo
++
++environment:
++  sdk: ^3.0.6
++
++# Add regular dependencies here.
++dependencies:
++  args: ^2.4.2
++  http: ^1.1.0
++  logging: ^1.2.0
++  path: ^1.8.3
++  process_run: ^0.13.1
++  xml: ^6.3.0
++  yaml: ^3.1.2
++  # to read .gitsubmodule files
++  ini: ^2.1.0
++
++dev_dependencies:
++  coverage: ^1.6.3
++  lints: ^2.0.0
++  test: ^1.21.0
+diff --git a/test/demo/.clang-format b/test/demo/.clang-format
+new file mode 100644
+index 0000000..1dd236c
+--- /dev/null
++++ b/test/demo/.clang-format
+@@ -0,0 +1,3 @@
++---
++Language:        Cpp
++BasedOnStyle:  WebKit
+diff --git a/test/demo/.clang-tidy b/test/demo/.clang-tidy
+new file mode 100644
+index 0000000..d3865ad
+--- /dev/null
++++ b/test/demo/.clang-tidy
+@@ -0,0 +1,186 @@
++---
++Checks:          'clang-diagnostic-*,clang-analyzer-*,-*,performance-*,bugprone-*,clang-analyzer-*,mpi-*,misc-*,readability-*'
++WarningsAsErrors: ''
++HeaderFilterRegex: ''
++AnalyzeTemporaryDtors: false
++FormatStyle:     'file'
++CheckOptions:
++  - key:             bugprone-argument-comment.CommentBoolLiterals
++    value:           '0'
++  - key:             bugprone-argument-comment.CommentCharacterLiterals
++    value:           '0'
++  - key:             bugprone-argument-comment.CommentFloatLiterals
++    value:           '0'
++  - key:             bugprone-argument-comment.CommentIntegerLiterals
++    value:           '0'
++  - key:             bugprone-argument-comment.CommentNullPtrs
++    value:           '0'
++  - key:             bugprone-argument-comment.CommentStringLiterals
++    value:           '0'
++  - key:             bugprone-argument-comment.CommentUserDefinedLiterals
++    value:           '0'
++  - key:             bugprone-argument-comment.IgnoreSingleArgument
++    value:           '0'
++  - key:             bugprone-argument-comment.StrictMode
++    value:           '0'
++  - key:             bugprone-assert-side-effect.AssertMacros
++    value:           assert
++  - key:             bugprone-assert-side-effect.CheckFunctionCalls
++    value:           '0'
++  - key:             bugprone-dangling-handle.HandleClasses
++    value:           'std::basic_string_view;std::experimental::basic_string_view'
++  - key:             bugprone-dynamic-static-initializers.HeaderFileExtensions
++    value:           ',h,hh,hpp,hxx'
++  - key:             bugprone-exception-escape.FunctionsThatShouldNotThrow
++    value:           ''
++  - key:             bugprone-exception-escape.IgnoredExceptions
++    value:           ''
++  - key:             bugprone-misplaced-widening-cast.CheckImplicitCasts
++    value:           '0'
++  - key:             bugprone-not-null-terminated-result.WantToUseSafeFunctions
++    value:           '1'
++  - key:             bugprone-signed-char-misuse.CharTypdefsToIgnore
++    value:           ''
++  - key:             bugprone-sizeof-expression.WarnOnSizeOfCompareToConstant
++    value:           '1'
++  - key:             bugprone-sizeof-expression.WarnOnSizeOfConstant
++    value:           '1'
++  - key:             bugprone-sizeof-expression.WarnOnSizeOfIntegerExpression
++    value:           '0'
++  - key:             bugprone-sizeof-expression.WarnOnSizeOfThis
++    value:           '1'
++  - key:             bugprone-string-constructor.LargeLengthThreshold
++    value:           '8388608'
++  - key:             bugprone-string-constructor.WarnOnLargeLength
++    value:           '1'
++  - key:             bugprone-suspicious-enum-usage.StrictMode
++    value:           '0'
++  - key:             bugprone-suspicious-missing-comma.MaxConcatenatedTokens
++    value:           '5'
++  - key:             bugprone-suspicious-missing-comma.RatioThreshold
++    value:           '0.200000'
++  - key:             bugprone-suspicious-missing-comma.SizeThreshold
++    value:           '5'
++  - key:             bugprone-suspicious-string-compare.StringCompareLikeFunctions
++    value:           ''
++  - key:             bugprone-suspicious-string-compare.WarnOnImplicitComparison
++    value:           '1'
++  - key:             bugprone-suspicious-string-compare.WarnOnLogicalNotComparison
++    value:           '0'
++  - key:             bugprone-too-small-loop-variable.MagnitudeBitsUpperLimit
++    value:           '16'
++  - key:             bugprone-unhandled-self-assignment.WarnOnlyIfThisHasSuspiciousField
++    value:           '1'
++  - key:             bugprone-unused-return-value.CheckedFunctions
++    value:           '::std::async;::std::launder;::std::remove;::std::remove_if;::std::unique;::std::unique_ptr::release;::std::basic_string::empty;::std::vector::empty'
++  - key:             cert-dcl16-c.NewSuffixes
++    value:           'L;LL;LU;LLU'
++  - key:             cert-oop54-cpp.WarnOnlyIfThisHasSuspiciousField
++    value:           '0'
++  - key:             cppcoreguidelines-explicit-virtual-functions.IgnoreDestructors
++    value:           '1'
++  - key:             cppcoreguidelines-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
++    value:           '1'
++  - key:             google-readability-braces-around-statements.ShortStatementLines
++    value:           '1'
++  - key:             google-readability-function-size.StatementThreshold
++    value:           '800'
++  - key:             google-readability-namespace-comments.ShortNamespaceLines
++    value:           '10'
++  - key:             google-readability-namespace-comments.SpacesBeforeComments
++    value:           '2'
++  - key:             misc-definitions-in-headers.HeaderFileExtensions
++    value:           ',h,hh,hpp,hxx'
++  - key:             misc-definitions-in-headers.UseHeaderFileExtension
++    value:           '1'
++  - key:             misc-throw-by-value-catch-by-reference.CheckThrowTemporaries
++    value:           '1'
++  - key:             misc-unused-parameters.StrictMode
++    value:           '0'
++  - key:             modernize-loop-convert.MaxCopySize
++    value:           '16'
++  - key:             modernize-loop-convert.MinConfidence
++    value:           reasonable
++  - key:             modernize-loop-convert.NamingStyle
++    value:           CamelCase
++  - key:             modernize-pass-by-value.IncludeStyle
++    value:           llvm
++  - key:             modernize-replace-auto-ptr.IncludeStyle
++    value:           llvm
++  - key:             modernize-use-nullptr.NullMacros
++    value:           'NULL'
++  - key:             performance-faster-string-find.StringLikeClasses
++    value:           'std::basic_string'
++  - key:             performance-for-range-copy.AllowedTypes
++    value:           ''
++  - key:             performance-for-range-copy.WarnOnAllAutoCopies
++    value:           '0'
++  - key:             performance-inefficient-string-concatenation.StrictMode
++    value:           '0'
++  - key:             performance-inefficient-vector-operation.EnableProto
++    value:           '0'
++  - key:             performance-inefficient-vector-operation.VectorLikeClasses
++    value:           '::std::vector'
++  - key:             performance-move-const-arg.CheckTriviallyCopyableMove
++    value:           '1'
++  - key:             performance-move-constructor-init.IncludeStyle
++    value:           llvm
++  - key:             performance-no-automatic-move.AllowedTypes
++    value:           ''
++  - key:             performance-type-promotion-in-math-fn.IncludeStyle
++    value:           llvm
++  - key:             performance-unnecessary-copy-initialization.AllowedTypes
++    value:           ''
++  - key:             performance-unnecessary-value-param.AllowedTypes
++    value:           ''
++  - key:             performance-unnecessary-value-param.IncludeStyle
++    value:           llvm
++  - key:             readability-braces-around-statements.ShortStatementLines
++    value:           '0'
++  - key:             readability-else-after-return.WarnOnUnfixable
++    value:           '1'
++  - key:             readability-function-size.BranchThreshold
++    value:           '4294967295'
++  - key:             readability-function-size.LineThreshold
++    value:           '4294967295'
++  - key:             readability-function-size.NestingThreshold
++    value:           '4294967295'
++  - key:             readability-function-size.ParameterThreshold
++    value:           '4294967295'
++  - key:             readability-function-size.StatementThreshold
++    value:           '800'
++  - key:             readability-function-size.VariableThreshold
++    value:           '4294967295'
++  - key:             readability-identifier-naming.IgnoreFailedSplit
++    value:           '0'
++  - key:             readability-implicit-bool-conversion.AllowIntegerConditions
++    value:           '0'
++  - key:             readability-implicit-bool-conversion.AllowPointerConditions
++    value:           '0'
++  - key:             readability-inconsistent-declaration-parameter-name.IgnoreMacros
++    value:           '1'
++  - key:             readability-inconsistent-declaration-parameter-name.Strict
++    value:           '0'
++  - key:             readability-magic-numbers.IgnoredFloatingPointValues
++    value:           '1.0;100.0;'
++  - key:             readability-magic-numbers.IgnoredIntegerValues
++    value:           '1;2;3;4;'
++  - key:             readability-redundant-member-init.IgnoreBaseInCopyConstructors
++    value:           '0'
++  - key:             readability-redundant-smartptr-get.IgnoreMacros
++    value:           '1'
++  - key:             readability-redundant-string-init.StringNames
++    value:           '::std::basic_string'
++  - key:             readability-simplify-boolean-expr.ChainedConditionalAssignment
++    value:           '0'
++  - key:             readability-simplify-boolean-expr.ChainedConditionalReturn
++    value:           '0'
++  - key:             readability-simplify-subscript-expr.Types
++    value:           '::std::basic_string;::std::basic_string_view;::std::vector;::std::array'
++  - key:             readability-static-accessed-through-instance.NameSpecifierNestingThreshold
++    value:           '3'
++  - key:             readability-uppercase-literal-suffix.IgnoreMacros
++    value:           '1'
++  - key:             readability-uppercase-literal-suffix.NewSuffixes
++    value:           ''
++...
+diff --git a/test/demo/compile_flags.txt b/test/demo/compile_flags.txt
+new file mode 100644
+index 0000000..03e4446
+--- /dev/null
++++ b/test/demo/compile_flags.txt
+@@ -0,0 +1,2 @@
++-Wall
++-Werror
+diff --git a/test/demo/demo.cpp b/test/demo/demo.cpp
+new file mode 100644
+index 0000000..1bf553e
+--- /dev/null
++++ b/test/demo/demo.cpp
+@@ -0,0 +1,18 @@
++/** This is a very ugly test code (doomed to fail linting) */
++#include "demo.hpp"
++#include <stdio.h>
++
++
++
++
++int main(){
++
++    for (;;) break;
++
++
++    printf("Hello world!\n");
++
++
++
++
++    return 0;}
+diff --git a/test/demo/demo.hpp b/test/demo/demo.hpp
+new file mode 100644
+index 0000000..f93d012
+--- /dev/null
++++ b/test/demo/demo.hpp
+@@ -0,0 +1,36 @@
++#pragma once
++
++
++
++class Dummy {
++    char* useless;
++    int numb;
++    Dummy() :numb(0), useless("\0"){}
++
++    public:
++    void *not_useful(char *str){useless = str;}
++};
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++struct LongDiff
++{
++
++    long diff;
++
++};
+diff --git a/test/git_test.dart b/test/git_test.dart
+new file mode 100644
+index 0000000..d16e188
+--- /dev/null
++++ b/test/git_test.dart
+@@ -0,0 +1,15 @@
++import 'package:cpp_linter_dart/git.dart';
++import 'package:test/test.dart';
++
++void main() {
++  group("git", () {
++    test("SHA", () async {
++      var sha = await getSha();
++      assert(RegExp(r'[0-9a-fA-F]{40}').matchAsPrefix(sha.trim()) != null);
++    });
++    test("diff", () async {
++      var diff = await getDiff(true);
++      assert(diff.isNotEmpty);
++    });
++  });
++}
+diff --git a/test/log_test.dart b/test/log_test.dart
+new file mode 100644
+index 0000000..54e24b7
+--- /dev/null
++++ b/test/log_test.dart
+@@ -0,0 +1,9 @@
++import 'package:test/test.dart';
++import 'package:cpp_linter_dart/logger.dart';
++
++void main() {
++  setUp(() => setupLoggers(true));
++  test('setExitCode()', () {
++    expect(setExitCode(42), 42);
++  });
++}

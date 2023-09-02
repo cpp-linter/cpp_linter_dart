@@ -1,3 +1,7 @@
+<!-- markdownlint-disable MD001 MD041 -->
+[![Dart](https://github.com/cpp-linter/cpp_linter_dart/actions/workflows/dart.yml/badge.svg)](https://github.com/cpp-linter/cpp_linter_dart/actions/workflows/dart.yml)
+[![code coverage](https://codecov.io/gh/cpp-linter/cpp_linter_dart/graph/badge.svg?token=iXV4BqcvQy)](https://codecov.io/gh/cpp-linter/cpp_linter_dart)
+
 # cpp_linter_dart
 
 This is an experimental port of the
