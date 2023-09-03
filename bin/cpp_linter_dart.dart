@@ -68,6 +68,7 @@ Future<int> main(List<String> arguments) async {
     files = listSourceFiles(extensions, ignored, notIgnored);
   }
   endLogGroup();
+
   if (files.isEmpty) {
     return setExitCode(0);
   }
@@ -83,13 +84,6 @@ Future<int> main(List<String> arguments) async {
   );
 
   startLogGroup('Posting comment(s)');
-  var threadCommentsAllowed = true;
-  if (githubEventPath.isNotEmpty) {
-    var repoInfo = ghEventPayload['repository'] as Map<String, Object>?;
-    if (repoInfo != null && repoInfo.keys.contains('private')) {
-      threadCommentsAllowed = repoInfo['private'] as bool == false;
-    }
-  }
   final commentBody = makeComment(formatAdvice, tidyNotes, linesChangedOnly);
   final commentPreamble = '<!-- cpp linter action -->\n# Cpp-Linter Report ';
   final commentPs = '\n\nHave any feedback or feature suggestions? [Share it '
@@ -97,6 +91,14 @@ Future<int> main(List<String> arguments) async {
   final lgtm = '$commentPreamble:heavy_check_mark:\nNo problems need attention.'
       '$commentPs';
   final fullComment = '$commentPreamble$commentBody$commentPs';
+
+  var threadCommentsAllowed = true;
+  if (githubEventPath.isNotEmpty) {
+    var repoInfo = ghEventPayload['repository'] as Map<String, Object>?;
+    if (repoInfo != null && repoInfo.keys.contains('private')) {
+      threadCommentsAllowed = repoInfo['private'] as bool == false;
+    }
+  }
   if (args['thread-comments'] != 'false' && threadCommentsAllowed) {
     bool updateOnly = args['thread-comments'] == 'update';
     if (args['lgtm'] && commentBody.isEmpty) {
@@ -111,16 +113,14 @@ Future<int> main(List<String> arguments) async {
       mode: FileMode.append,
     );
   }
-  setExitCode(
-    makeAnnotations(
-      formatAdvice,
-      tidyNotes,
-      args['file-annotations'],
-      args['style'],
-      linesChangedOnly,
-    ),
+  var exitCode = makeAnnotations(
+    formatAdvice,
+    tidyNotes,
+    args['file-annotations'],
+    args['style'],
+    linesChangedOnly,
   );
   endLogGroup();
 
-  return setExitCode(0);
+  return setExitCode(exitCode);
 }

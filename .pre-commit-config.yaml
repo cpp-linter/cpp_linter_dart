@@ -10,7 +10,7 @@ repos:
       - id: check-added-large-files
       - id: mixed-line-ending
         args: [--fix=lf]
-  - repo: https://github.com/fluttercommunity/import_sorter
-    rev: "f350497a11b1285c695595049e95a420068e7a9f"
-    hooks:
-      - id: dart-import-sorter
+  # - repo: https://github.com/fluttercommunity/import_sorter
+  #   rev: "f350497a11b1285c695595049e95a420068e7a9f"
+  #   hooks:
+  #     - id: dart-import-sorter
