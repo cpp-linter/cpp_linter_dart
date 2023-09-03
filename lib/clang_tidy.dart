@@ -10,6 +10,7 @@ import 'package:yaml/yaml.dart';
 import 'common.dart';
 import 'logger.dart';
 
+// coverage:ignore-start
 class TidyReplacement {
   int rmLength;
   int line;
@@ -158,6 +159,7 @@ TidyAdvice parseYmlAdvice(FileObj file, {bool lineChangesOnly = false}) {
   }
   return yamlAdvice;
 }
+// coverage:ignore-end
 
 /// A class to represent clang-tidy notifications (parsed from the stdout of a
 /// dry run).
