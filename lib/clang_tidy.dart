@@ -10,6 +10,7 @@ import 'package:yaml/yaml.dart';
 import 'common.dart';
 import 'logger.dart';
 
+// coverage:ignore-start
 class TidyReplacement {
   int rmLength;
   int line;
@@ -158,6 +159,7 @@ TidyAdvice parseYmlAdvice(FileObj file, {bool lineChangesOnly = false}) {
   }
   return yamlAdvice;
 }
+// coverage:ignore-end
 
 /// A class to represent clang-tidy notifications (parsed from the stdout of a
 /// dry run).
@@ -204,6 +206,7 @@ class TidyNotification {
 
 List<TidyNotification> parseTidyOutput(FileObj file, String output) {
   var notifications = <TidyNotification>[];
+  if (output.isEmpty) return notifications;
   for (final line in output.split('\n')) {
     var match = RegExp(r"^(.+):(\d+):(\d+):\s(\w+):(.*)\[([a-zA-Z\d\-\.]+)\]$")
         .matchAsPrefix(line);
@@ -226,8 +229,9 @@ List<TidyNotification> parseTidyOutput(FileObj file, String output) {
         ),
       );
     } else {
-      assert(notifications.isNotEmpty);
-      notifications.last.srcLines.add(line);
+      if (notifications.isNotEmpty) {
+        notifications.last.srcLines.add(line);
+      }
     }
   }
   return notifications;
@@ -253,7 +257,11 @@ Future<List<TidyNotification>> runClangTidy(
   if (checks.isNotEmpty) args.add("--checks='$checks'");
   if (database.isNotEmpty) {
     args.addAll(
-        ['-p', p.isRelative(database) ? p.absolute(database) : database]);
+      [
+        '-p',
+        p.normalize(p.isRelative(database) ? p.absolute(database) : database),
+      ],
+    );
   }
   var ranges = file.linesAdded;
   if (ranges.isNotEmpty) {
@@ -265,7 +273,7 @@ Future<List<TidyNotification>> runClangTidy(
   }
   if (extraArgs != null && extraArgs.isNotEmpty) {
     for (var arg in extraArgs) {
-      args.add('--extra-args=$arg');
+      args.add("--extra-arg='$arg'");
     }
   }
   args.add(file.name.replaceAll('\\', '/'));

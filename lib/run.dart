@@ -123,7 +123,7 @@ List<FileObj> listSourceFiles(
       }
 
       var relPath = p.relative(path.path);
-      var file = FileObj(relPath);
+      var file = FileObj(relPath.replaceAll(p.separator, '/'));
       var ignore = isFileInSet(file, ignored);
       if (ignore && isFileInSet(file, notIgnored)) {
         ignore = true;

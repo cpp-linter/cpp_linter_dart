@@ -16,6 +16,7 @@ Future<String> getSha({int parent = 1}) async {
   return subprocessRun('git', args: ["log", "-$parent", "--format=%H"]);
 }
 
+// coverage:ignore-start
 /// Get the diff for the currently staged files or the current commit if no
 /// changes were made.
 Future<String> getDiff(bool debug) async {
@@ -41,7 +42,7 @@ Future<String> getDiff(bool debug) async {
     );
   }
   return diff;
-}
+} // coverage:ignore-end
 
 /// Parses a file's name from the diff chunk's front matter. Binary files are
 /// ignored (returns `null`).

@@ -32,7 +32,7 @@ jobs:
         run: dart analyze --fatal-infos
 
       - name: Run tests (& collect coverage)
-        run: dart run coverage:test_with_coverage
+        run: dart run coverage:test_with_coverage --function-coverage --branch-coverage
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v3

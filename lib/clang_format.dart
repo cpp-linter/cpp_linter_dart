@@ -87,6 +87,7 @@ class FormatFix {
   }
 
   /// NOTE: This is currently broken and needs much improvement!
+  // coverage:ignore-start
   List<String> getSuggestions({bool lineChangesOnly = false}) {
     List<int>? linesChanged;
     if (lineChangesOnly) {
@@ -136,7 +137,7 @@ class FormatFix {
       );
     }
     return result;
-  }
+  } // coverage:ignore-end
 }
 
 /// Parse the [xmlOut] from running clang-format on a single [file].

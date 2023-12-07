@@ -111,7 +111,7 @@ String makeClangToolExeVersion(String tool, String version) {
     return '$tool-$version$suffix';
   }
   // treat version as an explicit path
-  var versionPath = p.absolute(version);
+  var versionPath = p.absolute(p.normalize(version));
   var possibles = [
     File('$versionPath/bin/$tool$suffix'),
     File('$versionPath/$tool$suffix'),
