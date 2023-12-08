@@ -59,6 +59,7 @@ void main() async {
         .toList();
     final (ignored, notIgnored) = parseIgnoredOption(args['ignore']);
     final files = listSourceFiles(ext, ignored, notIgnored);
+    Directory('.cpp_linter_cache').createSync();
     final (formatAdvice, _, tidyNotes) = await captureClangToolsOutput(
       files,
       args['version'],

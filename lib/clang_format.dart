@@ -143,6 +143,7 @@ class FormatFix {
 /// Parse the [xmlOut] from running clang-format on a single [file].
 FormatFix parseFormatReplacementsXml(String xmlOut, FileObj file) {
   FormatFix advice = FormatFix(file);
+  if (xmlOut.isEmpty) return advice;
   final document = XmlDocument.parse(xmlOut);
   for (final child in document.root.findAllElements('replacement')) {
     var offset = int.parse(
