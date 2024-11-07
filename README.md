@@ -4,6 +4,9 @@
 
 # cpp_linter_dart
 
+> [!NOTE]  
+> Archived Notes: With the new node.js bindings from [cpp-linter-rs](https://github.com/cpp-linter/cpp-linter-rs) project, the cpp_linter_dart project is completely obsolete.
+
 This is an experimental port of the
 [cpp-linter python package](https://github.com/cpp-linter/cpp-linter). Like the
 python package, this dart package is not meant to be used as a importable library.
